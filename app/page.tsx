@@ -14,11 +14,11 @@ type Recipe = {
   createdAt: number;
 };
 type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[]; characterTags: string[]; copyrightTags: string[]; metaTags: string[] };
-type DanbooruResult = { selectedTag: string | null; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
+type DanbooruResult = { selectedTag: string | null; totalCount?: number; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
 
 declare global {
   interface Window {
-    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; page?: number }) => Promise<DanbooruResult>; loadDanbooruImage: (url: string) => Promise<string> };
+    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; page?: number }) => Promise<DanbooruResult>; suggestDanbooru: (request: { q: string; mode: "artist" | "tag" }) => Promise<{ name: string; count: number }[]>; loadDanbooruImage: (url: string) => Promise<string> };
   }
 }
 
@@ -70,6 +70,8 @@ export default function Home() {
   const [booruResult, setBooruResult] = useState<DanbooruResult | null>(null);
   const [booruLoading, setBooruLoading] = useState(false);
   const [booruPage, setBooruPage] = useState(1);
+  const [booruPageInput, setBooruPageInput] = useState("1");
+  const [autocomplete, setAutocomplete] = useState<{ name: string; count: number }[]>([]);
   const [activeView, setActiveView] = useState<"workbench" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
@@ -87,6 +89,26 @@ export default function Home() {
     }
     try { setFavorites(JSON.parse(localStorage.getItem("nai-style-favorites") || "[]")); } catch { setFavorites([]); }
   }, []);
+
+  useEffect(() => {
+    const query = booruQuery.trim();
+    if (query.length < 2) { setAutocomplete([]); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        let suggestions: { name: string; count: number }[];
+        if (window.naiDesktop) suggestions = await window.naiDesktop.suggestDanbooru({ q: query, mode: booruMode });
+        else {
+          const params = new URLSearchParams({ q: query, mode: booruMode, suggest: "1" });
+          const response = await fetch(`/api/danbooru?${params}`);
+          const data = await response.json() as { suggestions: { name: string; count: number }[] };
+          suggestions = data.suggestions || [];
+        }
+        if (!cancelled) setAutocomplete(suggestions);
+      } catch { if (!cancelled) setAutocomplete([]); }
+    }, 320);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [booruQuery, booruMode]);
 
   const prompt = useMemo(() => {
     const artistPart = artists
@@ -242,6 +264,8 @@ export default function Home() {
       }
       setBooruResult(data);
       setBooruPage(page);
+      setBooruPageInput(String(page));
+      setAutocomplete([]);
       setNotice(data.posts.length ? `已载入第 ${page} 页，共 ${data.posts.length} 张参考图` : "这一页没有参考图");
     } catch (error) {
       setBooruResult({ selectedTag: null, suggestions: [], posts: [], error: error instanceof Error ? error.message : "查询失败" });
@@ -249,6 +273,12 @@ export default function Home() {
     } finally {
       setBooruLoading(false);
     }
+  };
+
+  const totalBooruPages = Math.max(1, Math.ceil((booruResult?.totalCount || 0) / 24));
+  const jumpBooruPage = () => {
+    const page = Math.max(1, Math.min(totalBooruPages, Number(booruPageInput) || 1));
+    searchDanbooru(booruResult?.selectedTag || undefined, page);
   };
 
   const useDanbooruTag = (tag: string) => {
@@ -343,13 +373,13 @@ export default function Home() {
           <div className="panel-heading"><div><span className="step">DB</span><h2>Danbooru 参考库</h2></div><span className="safe-badge">全部分级</span></div>
           <div className="booru-search">
             <select value={booruMode} onChange={(event) => { setBooruMode(event.target.value as "artist" | "tag"); setBooruResult(null); setBooruPage(1); }} aria-label="查询类型"><option value="artist">画师</option><option value="tag">提示词</option></select>
-            <input value={booruQuery} onChange={(event) => setBooruQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchDanbooru(); }} placeholder={booruMode === "artist" ? "输入画师名，如 honashi" : "输入英文标签，如 cinematic lighting"} />
+            <div className="booru-input-wrap"><input value={booruQuery} onChange={(event) => setBooruQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchDanbooru(); }} placeholder={booruMode === "artist" ? "输入画师名，如 honashi" : "输入英文标签，如 cinematic lighting"} />{!!autocomplete.length && <div className="booru-autocomplete">{autocomplete.map((tag) => <button key={tag.name} onMouseDown={(event) => event.preventDefault()} onClick={() => { setBooruQuery(tag.name); searchDanbooru(tag.name, 1); }}><span>{tag.name}</span><small>{tag.count.toLocaleString()} 张</small></button>)}</div>}</div>
             <button className="button primary" disabled={booruLoading} onClick={() => searchDanbooru()}>{booruLoading ? "查询中…" : "查询"}</button>
           </div>
           {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
           {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
           {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={() => { keepPostOpen(); showPost(post); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><b>第 {booruPage} 页</b><button disabled={booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
+          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={() => { keepPostOpen(); showPost(post); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, 1)}>首页</button><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><label>第 <input type="number" min="1" max={totalBooruPages} value={booruPageInput} onChange={(event) => setBooruPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jumpBooruPage(); }} /> / {totalBooruPages} 页</label><button disabled={booruLoading} onClick={jumpBooruPage}>跳转</button><button disabled={booruLoading || booruPage >= totalBooruPages} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
           {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
         </section>
       </section>}

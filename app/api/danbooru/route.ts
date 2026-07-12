@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
     tagsUrl.searchParams.set("search[category]", mode === "artist" ? "1" : "0");
     tagsUrl.searchParams.set("search[order]", "count");
     const tags = await fetchJson<DanbooruTag[]>(tagsUrl);
+    if (request.nextUrl.searchParams.get("suggest") === "1") {
+      return NextResponse.json({ suggestions: tags.map((tag) => ({ name: tag.name, count: tag.post_count })) }, { headers: { "Cache-Control": "public, max-age=120" } });
+    }
     const selectedTag = chosen || tags.find((tag) => tag.name === query)?.name || tags[0]?.name;
 
     if (!selectedTag) return NextResponse.json({ suggestions: [], posts: [], selectedTag: null });
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       selectedTag,
+      totalCount: tags.find((tag) => tag.name === selectedTag)?.post_count || 0,
       suggestions: tags.map((tag) => ({ name: tag.name, count: tag.post_count })),
       posts: posts
         .filter((post) => post.preview_file_url)

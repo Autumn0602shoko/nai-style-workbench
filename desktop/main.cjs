@@ -86,6 +86,9 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
         imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
         artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
         generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
+        characterTags: (post.tag_string_character || "").split(" ").filter(Boolean),
+        copyrightTags: (post.tag_string_copyright || "").split(" ").filter(Boolean),
+        metaTags: (post.tag_string_meta || "").split(" ").filter(Boolean).slice(0, 12),
         postUrl: `https://danbooru.donmai.us/posts/${post.id}`,
       };
     } catch { return null; }
@@ -100,6 +103,14 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
 app.whenReady().then(() => {
   app.setAppUserModelId("com.nai.styleworkbench");
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));
+  ipcMain.handle("danbooru:image", async (_event, value) => {
+    const url = new URL(String(value));
+    if (url.protocol !== "https:" || url.hostname !== "cdn.donmai.us") throw new Error("不支持的图片地址");
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.5" }, signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`图片加载失败 ${response.status}`);
+    const type = response.headers.get("content-type") || "image/jpeg";
+    return `data:${type};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;
+  });
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

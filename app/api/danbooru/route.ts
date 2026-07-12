@@ -13,6 +13,9 @@ type DanbooruPost = {
   source?: string | null;
   tag_string_artist?: string;
   tag_string_general?: string;
+  tag_string_character?: string;
+  tag_string_copyright?: string;
+  tag_string_meta?: string;
 };
 
 const fetchJson = async <T,>(url: URL): Promise<T> => {
@@ -67,10 +70,13 @@ export async function GET(request: NextRequest) {
           id: post.id,
           rating: post.rating,
           previewUrl: `/api/danbooru?image=${encodeURIComponent(post.preview_file_url!)}`,
-          imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
+          imageUrl: `/api/danbooru?image=${encodeURIComponent(post.large_file_url || post.file_url || post.preview_file_url!)}`,
           source: post.source || null,
           artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
           generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
+          characterTags: (post.tag_string_character || "").split(" ").filter(Boolean),
+          copyrightTags: (post.tag_string_copyright || "").split(" ").filter(Boolean),
+          metaTags: (post.tag_string_meta || "").split(" ").filter(Boolean).slice(0, 12),
           postUrl: `${DANBOORU}/posts/${post.id}`,
         })),
     }, { headers: { "Cache-Control": "public, max-age=300" } });

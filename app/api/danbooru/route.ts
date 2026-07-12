@@ -24,6 +24,21 @@ const fetchJson = async <T,>(url: URL): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+const fetchTagSuggestions = async (query: string, mode: "artist" | "tag", limit = 30) => {
+  const fetchMatches = async (pattern: string) => {
+    const url = new URL("/tags.json", DANBOORU);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("search[name_matches]", pattern);
+    url.searchParams.set("search[category]", mode === "artist" ? "1" : "0");
+    url.searchParams.set("search[order]", "count");
+    return fetchJson<DanbooruTag[]>(url);
+  };
+  const prefix = await fetchMatches(`${query}*`);
+  if (prefix.length >= limit) return prefix;
+  const contains = await fetchMatches(`*${query}*`);
+  return [...new Map([...prefix, ...contains].map((tag) => [tag.name, tag])).values()].slice(0, limit);
+};
+
 export async function GET(request: NextRequest) {
   const image = request.nextUrl.searchParams.get("image");
   if (image) {
@@ -45,13 +60,9 @@ export async function GET(request: NextRequest) {
   if (!query && !chosen) return NextResponse.json({ error: "请输入画师或提示词" }, { status: 400 });
 
   try {
-    const tagsUrl = new URL("/tags.json", DANBOORU);
-    tagsUrl.searchParams.set("limit", "8");
-    tagsUrl.searchParams.set("search[name_matches]", `${query || chosen}*`);
-    tagsUrl.searchParams.set("search[category]", mode === "artist" ? "1" : "0");
-    tagsUrl.searchParams.set("search[order]", "count");
-    const tags = await fetchJson<DanbooruTag[]>(tagsUrl);
-    if (request.nextUrl.searchParams.get("suggest") === "1") {
+    const isSuggestion = request.nextUrl.searchParams.get("suggest") === "1";
+    const tags = await fetchTagSuggestions(query || chosen, mode, isSuggestion ? 30 : 8);
+    if (isSuggestion) {
       return NextResponse.json({ suggestions: tags.map((tag) => ({ name: tag.name, count: tag.post_count })) }, { headers: { "Cache-Control": "public, max-age=120" } });
     }
     const selectedTag = chosen || tags.find((tag) => tag.name === query)?.name || tags[0]?.name;

@@ -37,7 +37,7 @@ const createWindow = () => {
         if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
-        return { ready: suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")), count: data.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")), suggestions: suggestions.length, count: data.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -109,13 +109,15 @@ app.whenReady().then(() => {
     const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
     if (query.length < 2) return [];
     const url = new URL("https://danbooru.donmai.us/tags.json");
-    url.searchParams.set("limit", "10");
-    url.searchParams.set("search[name_matches]", `${query}*`);
+    url.searchParams.set("limit", "30");
+    url.searchParams.set("search[name_matches]", `*${query}*`);
     url.searchParams.set("search[category]", mode === "tag" ? "0" : "1");
     url.searchParams.set("search[order]", "count");
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.6" }, signal: AbortSignal.timeout(8_000) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.6.1" }, signal: AbortSignal.timeout(8_000) });
     if (!response.ok) throw new Error(`Danbooru 返回 ${response.status}`);
-    return (await response.json()).map((item) => ({ name: item.name, count: item.post_count }));
+    return (await response.json())
+      .sort((left, right) => Number(right.name.startsWith(query)) - Number(left.name.startsWith(query)) || right.post_count - left.post_count)
+      .map((item) => ({ name: item.name, count: item.post_count }));
   });
   ipcMain.handle("danbooru:image", async (_event, value) => {
     const url = new URL(String(value));

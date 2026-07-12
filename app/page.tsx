@@ -77,7 +77,7 @@ export default function Home() {
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
   const [pinnedPostId, setPinnedPostId] = useState<number | null>(null);
   const [detailImage, setDetailImage] = useState("");
-  const [detailPosition, setDetailPosition] = useState({ top: 132, left: 24 });
+  const [detailPosition, setDetailPosition] = useState({ top: 12, left: 24, maxHeight: 720 });
   const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRequestId = useRef(0);
   const importRecipesRef = useRef<HTMLInputElement>(null);
@@ -308,7 +308,8 @@ export default function Home() {
   };
 
   const positionPostDetail = (anchor?: HTMLElement) => {
-    if (!anchor || window.innerWidth <= 650) { setDetailPosition({ top: 12, left: 12 }); return; }
+    const viewportHeight = Math.max(320, window.innerHeight - 24);
+    if (!anchor || window.innerWidth <= 650) { setDetailPosition({ top: 12, left: 12, maxHeight: viewportHeight }); return; }
     const rect = anchor.getBoundingClientRect();
     const gap = 12;
     const width = Math.min(850, window.innerWidth - 32);
@@ -317,8 +318,10 @@ export default function Home() {
     const left = rightSide + width <= window.innerWidth - 12
       ? rightSide
       : leftSide >= 12 ? leftSide : Math.max(12, Math.min(window.innerWidth - width - 12, rect.left + rect.width / 2 - width / 2));
-    const top = Math.max(12, Math.min(rect.top, window.innerHeight - 520));
-    setDetailPosition({ top, left });
+    const estimatedHeight = Math.min(720, viewportHeight);
+    const centeredTop = rect.top + rect.height / 2 - estimatedHeight / 2;
+    const top = Math.max(12, Math.min(centeredTop, window.innerHeight - estimatedHeight - 12));
+    setDetailPosition({ top, left, maxHeight: window.innerHeight - top - 12 });
   };
 
   const showPost = async (post: DanbooruPost, pinned = false, anchor?: HTMLElement) => {
@@ -436,7 +439,7 @@ export default function Home() {
 
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button></header><div>{tags.map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button></header><div>{tags.map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

@@ -29,7 +29,7 @@ const fetchTagSuggestions = async (query: string, mode: "artist" | "tag", limit 
     const url = new URL("/tags.json", DANBOORU);
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("search[name_matches]", pattern);
-    url.searchParams.set("search[category]", mode === "artist" ? "1" : "0");
+    if (mode === "artist") url.searchParams.set("search[category]", "1");
     url.searchParams.set("search[order]", "count");
     return fetchJson<DanbooruTag[]>(url);
   };

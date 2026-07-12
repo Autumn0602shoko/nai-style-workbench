@@ -37,7 +37,8 @@ const createWindow = () => {
         if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
-        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")), suggestions: suggestions.length, count: data.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        const character = await window.naiDesktop.searchDanbooru({ q: "mika_(blue_archive)", mode: "tag", page: 1 });
+        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")) && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, characterTag: character.selectedTag, characterCount: character.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -75,7 +76,7 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
   const tagsUrl = new URL("https://danbooru.donmai.us/tags.json");
   tagsUrl.searchParams.set("limit", "8");
   tagsUrl.searchParams.set("search[name_matches]", `${query || chosen}*`);
-  tagsUrl.searchParams.set("search[category]", mode === "tag" ? "0" : "1");
+  if (mode !== "tag") tagsUrl.searchParams.set("search[category]", "1");
   tagsUrl.searchParams.set("search[order]", "count");
   const earlyPostsUrl = chosen ? new URL("https://danbooru.donmai.us/posts.json") : null;
   if (earlyPostsUrl) {
@@ -140,7 +141,7 @@ app.whenReady().then(() => {
     const url = new URL("https://danbooru.donmai.us/tags.json");
     url.searchParams.set("limit", "30");
     url.searchParams.set("search[name_matches]", `*${query}*`);
-    url.searchParams.set("search[category]", mode === "tag" ? "0" : "1");
+    if (mode !== "tag") url.searchParams.set("search[category]", "1");
     url.searchParams.set("search[order]", "count");
     const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.6.1" }, signal: AbortSignal.timeout(8_000) });
     if (!response.ok) throw new Error(`Danbooru 返回 ${response.status}`);

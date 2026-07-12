@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Artist = { id: string; name: string; weight: number; enabled: boolean };
 type Recipe = {
@@ -66,6 +66,9 @@ export default function Home() {
   const [images, setImages] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [notice, setNotice] = useState("");
+  const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const importRecipesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -92,12 +95,19 @@ export default function Home() {
   const updateArtist = (id: string, patch: Partial<Artist>) =>
     setArtists((current) => current.map((artist) => (artist.id === id ? { ...artist, ...patch } : artist)));
 
-  const saveRecipe = () => {
-    const recipe: Recipe = { id: uid(), name: recipeName.trim() || "未命名画师串", artists, suffix, images, createdAt: Date.now() };
-    const next = [recipe, ...recipes];
+  const persistRecipes = (next: Recipe[]) => {
     setRecipes(next);
     localStorage.setItem("nai-style-recipes", JSON.stringify(next));
-    setNotice("配方已保存到当前浏览器");
+  };
+
+  const saveRecipe = () => {
+    const recipe: Recipe = { id: activeRecipeId || uid(), name: recipeName.trim() || "未命名画师串", artists, suffix, images, createdAt: Date.now() };
+    const next = activeRecipeId
+      ? [recipe, ...recipes.filter((item) => item.id !== activeRecipeId)]
+      : [recipe, ...recipes];
+    persistRecipes(next);
+    setActiveRecipeId(recipe.id);
+    setNotice(activeRecipeId ? "配方已更新" : "配方已保存到当前浏览器");
   };
 
   const loadRecipe = (recipe: Recipe) => {
@@ -105,21 +115,75 @@ export default function Home() {
     setArtists(recipe.artists.map((artist) => ({ ...artist, id: uid() })));
     setSuffix(recipe.suffix);
     setImages(recipe.images);
+    setActiveRecipeId(recipe.id);
     setNotice(`已载入「${recipe.name}」`);
   };
 
   const removeRecipe = (id: string) => {
     const next = recipes.filter((recipe) => recipe.id !== id);
-    setRecipes(next);
-    localStorage.setItem("nai-style-recipes", JSON.stringify(next));
+    persistRecipes(next);
+    if (activeRecipeId === id) setActiveRecipeId(null);
+  };
+
+  const addImages = async (incoming: File[]) => {
+    const files = incoming.filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 6 - images.length));
+    const next = await Promise.all(files.map(resizeImage));
+    setImages((current) => [...current, ...next].slice(0, 6));
+    setNotice(next.length ? `已导入 ${next.length} 张参考图` : "没有可导入的图片");
   };
 
   const importImages = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []).slice(0, Math.max(0, 6 - images.length));
-    const next = await Promise.all(files.map(resizeImage));
-    setImages((current) => [...current, ...next].slice(0, 6));
+    await addImages(Array.from(event.target.files || []));
     event.target.value = "";
   };
+
+  const dropImages = async (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    await addImages(Array.from(event.dataTransfer.files));
+  };
+
+  const moveArtist = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= artists.length) return;
+    setArtists((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const exportRecipes = () => {
+    const blob = new Blob([JSON.stringify({ version: 1, recipes }, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `画师串配方-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setNotice(`已导出 ${recipes.length} 个配方`);
+  };
+
+  const importRecipes = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const incoming = Array.isArray(data) ? data : data.recipes;
+      if (!Array.isArray(incoming)) throw new Error("invalid");
+      const valid = incoming.filter((item): item is Recipe => item && typeof item.name === "string" && Array.isArray(item.artists));
+      const merged = [...valid, ...recipes.filter((recipe) => !valid.some((item) => item.id === recipe.id))];
+      persistRecipes(merged);
+      setNotice(`已导入 ${valid.length} 个配方`);
+    } catch {
+      setNotice("导入失败：请选择工作台导出的 JSON 文件");
+    }
+  };
+
+  const filteredRecipes = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return recipes;
+    return recipes.filter((recipe) => `${recipe.name} ${recipe.artists.map((artist) => artist.name).join(" ")}`.toLowerCase().includes(keyword));
+  }, [recipes, search]);
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(prompt);
@@ -135,8 +199,8 @@ export default function Home() {
         </div>
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
-          <button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setImages([]); }}>＋ 新建</button>
-          <button className="button primary" onClick={saveRecipe}>保存配方</button>
+          <button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
+          <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button>
         </div>
       </header>
 
@@ -153,7 +217,7 @@ export default function Home() {
 
           <section className="panel gallery-panel">
             <div className="panel-heading"><div><span className="step">03</span><h2>参考图预览</h2></div><span className="counter">{images.length}/6</span></div>
-            <label className="dropzone">
+            <label className="dropzone" onDragOver={(event) => event.preventDefault()} onDrop={dropImages}>
               <input type="file" accept="image/*" multiple onChange={importImages} />
               <strong>＋ 导入参考图</strong>
               <span>支持拖入或多选，图片仅保存在本机</span>
@@ -191,6 +255,7 @@ export default function Home() {
                     <a href={`https://aitag.win/?q=${encodeURIComponent(`artist:${artist.name}`)}`} target="_blank" rel="noreferrer">AI TAG</a>
                     <a href={`https://danbooru.donmai.us/posts?tags=${encodeURIComponent(artist.name.replace(/ /g, "_"))}`} target="_blank" rel="noreferrer">作品</a>
                   </div>
+                  <div className="artist-order"><button aria-label={`上移 ${artist.name}`} disabled={index === 0} onClick={() => moveArtist(index, -1)}>↑</button><button aria-label={`下移 ${artist.name}`} disabled={index === artists.length - 1} onClick={() => moveArtist(index, 1)}>↓</button></div>
                   <button className="remove" aria-label={`删除 ${artist.name}`} onClick={() => setArtists((current) => current.filter((item) => item.id !== artist.id))}>×</button>
                 </article>
               ))}
@@ -208,10 +273,16 @@ export default function Home() {
 
       <section className="library">
         <div className="library-heading"><div><p className="eyebrow">LOCAL LIBRARY</p><h2>已保存的画师串</h2></div><span>{recipes.length} 个配方</span></div>
+        <div className="library-tools">
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索配方或画师…" aria-label="搜索配方或画师" />
+          <input ref={importRecipesRef} className="file-input" type="file" accept="application/json,.json" onChange={importRecipes} />
+          <button className="button secondary" onClick={() => importRecipesRef.current?.click()}>导入</button>
+          <button className="button secondary" disabled={!recipes.length} onClick={exportRecipes}>导出</button>
+        </div>
         <div className="recipe-grid">
-          {!recipes.length && <div className="library-empty">调整满意后点击右上角“保存配方”，它会出现在这里。</div>}
-          {recipes.map((recipe) => (
-            <article className="recipe-card" key={recipe.id}>
+          {!filteredRecipes.length && <div className="library-empty">{recipes.length ? "没有找到匹配的配方。" : "调整满意后点击右上角“保存配方”，它会出现在这里。"}</div>}
+          {filteredRecipes.map((recipe) => (
+            <article className={`recipe-card ${recipe.id === activeRecipeId ? "active" : ""}`} key={recipe.id}>
               <div className="recipe-cover">{recipe.images[0] ? <img src={recipe.images[0]} alt="" /> : <span>{recipe.name.slice(0, 1)}</span>}</div>
               <div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.artists.map((artist) => artist.name).join(" · ") || "暂无画师"}</p><small>{recipe.artists.length} 位画师 · {new Date(recipe.createdAt).toLocaleDateString("zh-CN")}</small></div>
               <div className="recipe-actions"><button onClick={() => loadRecipe(recipe)}>载入</button><button onClick={() => removeRecipe(recipe.id)}>删除</button></div>

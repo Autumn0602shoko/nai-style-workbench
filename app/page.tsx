@@ -75,6 +75,8 @@ export default function Home() {
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
   const [pinnedPostId, setPinnedPostId] = useState<number | null>(null);
   const [detailImage, setDetailImage] = useState("");
+  const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailRequestId = useRef(0);
   const importRecipesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -270,12 +272,32 @@ export default function Home() {
   };
 
   const showPost = async (post: DanbooruPost, pinned = false) => {
+    const requestId = ++detailRequestId.current;
+    if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
     setFocusedPost(post);
     if (pinned) setPinnedPostId(post.id);
     setDetailImage(post.previewUrl);
     if (window.naiDesktop && !post.imageUrl.startsWith("data:")) {
-      try { setDetailImage(await window.naiDesktop.loadDanbooruImage(post.imageUrl)); } catch {}
+      try {
+        const image = await window.naiDesktop.loadDanbooruImage(post.imageUrl);
+        if (detailRequestId.current === requestId) setDetailImage(image);
+      } catch {}
     } else setDetailImage(post.imageUrl);
+  };
+
+  const keepPostOpen = () => {
+    if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+    hoverCloseTimer.current = null;
+  };
+
+  const schedulePostClose = (postId: number) => {
+    keepPostOpen();
+    if (pinnedPostId === postId) return;
+    hoverCloseTimer.current = setTimeout(() => {
+      detailRequestId.current += 1;
+      setFocusedPost((current) => current?.id === postId ? null : current);
+      setDetailImage("");
+    }, 550);
   };
 
   const sendPostToWorkbench = (post: DanbooruPost) => {
@@ -327,14 +349,14 @@ export default function Home() {
           {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
           {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
           {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={() => showPost(post)} onMouseLeave={() => { if (pinnedPostId !== post.id) { setFocusedPost(null); setDetailImage(""); } }}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><b>第 {booruPage} 页</b><button disabled={booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
+          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={() => { keepPostOpen(); showPost(post); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><b>第 {booruPage} 页</b><button disabled={booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
           {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
         </section>
       </section>}
 
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} onMouseLeave={() => { if (pinnedPostId !== focusedPost.id) { setFocusedPost(null); setDetailImage(""); } }}><button className="detail-close" onClick={() => { setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "悬停预览"}</span></div>{[["画师", focusedPost.artistTags],["角色", focusedPost.characterTags],["作品", focusedPost.copyrightTags],["服装", generalGroups(focusedPost.generalTags).clothing],["动作", generalGroups(focusedPost.generalTags).actions],["其他提示词", generalGroups(focusedPost.generalTags).other],["元数据", focusedPost.metaTags]].map(([label, tags]) => !!tags.length && <section className="tag-group" key={label as string}><h4>{label as string}</h4><div>{(tags as string[]).map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{[["画师", focusedPost.artistTags],["角色", focusedPost.characterTags],["作品", focusedPost.copyrightTags],["服装", generalGroups(focusedPost.generalTags).clothing],["动作", generalGroups(focusedPost.generalTags).actions],["其他提示词", generalGroups(focusedPost.generalTags).other],["元数据", focusedPost.metaTags]].map(([label, tags]) => !!tags.length && <section className="tag-group" key={label as string}><h4>{label as string}</h4><div>{(tags as string[]).map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

@@ -77,6 +77,7 @@ export default function Home() {
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
   const [pinnedPostId, setPinnedPostId] = useState<number | null>(null);
   const [detailImage, setDetailImage] = useState("");
+  const [detailPosition, setDetailPosition] = useState({ top: 132, left: 24 });
   const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRequestId = useRef(0);
   const importRecipesRef = useRef<HTMLInputElement>(null);
@@ -306,9 +307,24 @@ export default function Home() {
     localStorage.setItem("nai-style-favorites", JSON.stringify(next));
   };
 
-  const showPost = async (post: DanbooruPost, pinned = false) => {
+  const positionPostDetail = (anchor?: HTMLElement) => {
+    if (!anchor || window.innerWidth <= 650) { setDetailPosition({ top: 12, left: 12 }); return; }
+    const rect = anchor.getBoundingClientRect();
+    const gap = 12;
+    const width = Math.min(850, window.innerWidth - 32);
+    const rightSide = rect.right + gap;
+    const leftSide = rect.left - width - gap;
+    const left = rightSide + width <= window.innerWidth - 12
+      ? rightSide
+      : leftSide >= 12 ? leftSide : Math.max(12, Math.min(window.innerWidth - width - 12, rect.left + rect.width / 2 - width / 2));
+    const top = Math.max(12, Math.min(rect.top, window.innerHeight - 520));
+    setDetailPosition({ top, left });
+  };
+
+  const showPost = async (post: DanbooruPost, pinned = false, anchor?: HTMLElement) => {
     const requestId = ++detailRequestId.current;
     if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+    positionPostDetail(anchor);
     setFocusedPost(post);
     if (pinned) setPinnedPostId(post.id);
     setDetailImage(post.previewUrl);
@@ -344,14 +360,43 @@ export default function Home() {
   };
 
   const generalGroups = (tags: string[]) => {
-    const clothingWords = /dress|shirt|skirt|pants|uniform|jacket|coat|sleeve|shoes|boots|hat|gloves|swimsuit|bikini|lingerie|clothes|hoodie|kimono|armor|stockings|pantyhose|bra|necktie/;
+    const clothingWords = /dress|shirt|skirt|pants|shorts|uniform|jacket|coat|sleeve|shoes|boots|hat|gloves|swimsuit|bikini|lingerie|clothes|hoodie|kimono|armor|stockings|pantyhose|bra|necktie|ribbon|collar|apron|robe|sweater|cardigan|socks|footwear/;
     const actionWords = /sitting|standing|walking|running|lying|looking|holding|smile|smiling|fighting|dancing|jumping|kneeling|pose|reaching|sleeping|eating|drinking/;
+    const hairColorWords = /(?:black|brown|blonde|yellow|red|orange|green|blue|purple|pink|white|grey|gray|silver|aqua|multicolored|two-tone)_hair/;
+    const eyeWords = /(?:black|brown|yellow|red|orange|green|blue|purple|pink|white|grey|gray|aqua|heterochromia)_eyes|closed_eyes|one_eye_closed/;
+    const featureWords = /long_hair|short_hair|medium_hair|very_long_hair|twintails|ponytail|braid|bangs|ahoge|hair_ornament|animal_ears|cat_ears|fox_ears|dog_ears|horns|tail|wings|fang|freckles|mole|dark_skin|pale_skin|tan|muscular|petite|curvy|breasts|glasses/;
+    const clothing = tags.filter((tag) => clothingWords.test(tag));
+    const hairColor = tags.filter((tag) => hairColorWords.test(tag));
+    const eyes = tags.filter((tag) => eyeWords.test(tag));
+    const features = tags.filter((tag) => featureWords.test(tag) && !hairColorWords.test(tag) && !eyeWords.test(tag));
+    const actions = tags.filter((tag) => actionWords.test(tag));
     return {
-      clothing: tags.filter((tag) => clothingWords.test(tag)),
-      actions: tags.filter((tag) => actionWords.test(tag)),
-      other: tags.filter((tag) => !clothingWords.test(tag) && !actionWords.test(tag)),
+      clothing,
+      hairColor,
+      eyes,
+      features,
+      actions,
+      other: tags.filter((tag) => ![clothing, hairColor, eyes, features, actions].some((group) => group.includes(tag))),
     };
   };
+
+  const copyTagGroup = async (label: string, tags: string[]) => {
+    await navigator.clipboard.writeText(tags.join(", "));
+    setNotice(`已复制${label}标签，共 ${tags.length} 项`);
+  };
+
+  const detailTagGroups: [string, string[]][] = focusedPost ? [
+    ["画师", focusedPost.artistTags],
+    ["角色", focusedPost.characterTags],
+    ["作品", focusedPost.copyrightTags],
+    ["人物衣着", generalGroups(focusedPost.generalTags).clothing],
+    ["发色", generalGroups(focusedPost.generalTags).hairColor],
+    ["眼睛", generalGroups(focusedPost.generalTags).eyes],
+    ["角色特征", generalGroups(focusedPost.generalTags).features],
+    ["动作", generalGroups(focusedPost.generalTags).actions],
+    ["其他提示词", generalGroups(focusedPost.generalTags).other],
+    ["元数据", focusedPost.metaTags],
+  ] : [];
 
   return (
     <main>
@@ -384,14 +429,14 @@ export default function Home() {
           {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
           {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
           {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={() => { keepPostOpen(); showPost(post); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, 1)}>首页</button><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><label>第 <input type="number" min="1" max={totalBooruPages} value={booruPageInput} onChange={(event) => setBooruPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jumpBooruPage(); }} /> / {totalBooruPages} 页</label><button disabled={booruLoading} onClick={jumpBooruPage}>跳转</button><button disabled={booruLoading || booruPage >= totalBooruPages} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
+          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={(event) => { keepPostOpen(); showPost(post, false, event.currentTarget); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, 1)}>首页</button><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><label>第 <input type="number" min="1" max={totalBooruPages} value={booruPageInput} onChange={(event) => setBooruPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jumpBooruPage(); }} /> / {totalBooruPages} 页</label><button disabled={booruLoading} onClick={jumpBooruPage}>跳转</button><button disabled={booruLoading || booruPage >= totalBooruPages} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
           {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
         </section>
       </section>}
 
-      {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={() => showPost(post, true)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
+      {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{[["画师", focusedPost.artistTags],["角色", focusedPost.characterTags],["作品", focusedPost.copyrightTags],["服装", generalGroups(focusedPost.generalTags).clothing],["动作", generalGroups(focusedPost.generalTags).actions],["其他提示词", generalGroups(focusedPost.generalTags).other],["元数据", focusedPost.metaTags]].map(([label, tags]) => !!tags.length && <section className="tag-group" key={label as string}><h4>{label as string}</h4><div>{(tags as string[]).map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button></header><div>{tags.map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

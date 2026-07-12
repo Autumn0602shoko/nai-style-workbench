@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const query = (request.nextUrl.searchParams.get("q") || "").trim().toLowerCase().replace(/\s+/g, "_");
   const mode = request.nextUrl.searchParams.get("mode") === "tag" ? "tag" : "artist";
   const chosen = (request.nextUrl.searchParams.get("tag") || "").trim().toLowerCase();
+  const page = Math.max(1, Math.min(1000, Number(request.nextUrl.searchParams.get("page")) || 1));
   if (!query && !chosen) return NextResponse.json({ error: "请输入画师或提示词" }, { status: 400 });
 
   try {
@@ -39,17 +40,19 @@ export async function GET(request: NextRequest) {
     if (!selectedTag) return NextResponse.json({ suggestions: [], posts: [], selectedTag: null });
 
     const postsUrl = new URL("/posts.json", DANBOORU);
-    postsUrl.searchParams.set("limit", "18");
-    postsUrl.searchParams.set("tags", `${selectedTag} rating:g`);
+    postsUrl.searchParams.set("limit", "24");
+    postsUrl.searchParams.set("page", String(page));
+    postsUrl.searchParams.set("tags", selectedTag);
     const posts = await fetchJson<DanbooruPost[]>(postsUrl);
 
     return NextResponse.json({
       selectedTag,
       suggestions: tags.map((tag) => ({ name: tag.name, count: tag.post_count })),
       posts: posts
-        .filter((post) => post.rating === "g" && post.preview_file_url)
+        .filter((post) => post.preview_file_url)
         .map((post) => ({
           id: post.id,
+          rating: post.rating,
           previewUrl: post.preview_file_url,
           imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
           source: post.source || null,
@@ -62,4 +65,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "暂时无法连接 Danbooru，请稍后重试" }, { status: 502 });
   }
 }
-

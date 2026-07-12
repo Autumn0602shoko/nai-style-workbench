@@ -13,12 +13,12 @@ type Recipe = {
   images: string[];
   createdAt: number;
 };
-type DanbooruPost = { id: number; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[] };
+type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[] };
 type DanbooruResult = { selectedTag: string | null; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
 
 declare global {
   interface Window {
-    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string }) => Promise<DanbooruResult> };
+    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; page?: number }) => Promise<DanbooruResult> };
   }
 }
 
@@ -69,6 +69,7 @@ export default function Home() {
   const [booruMode, setBooruMode] = useState<"artist" | "tag">("artist");
   const [booruResult, setBooruResult] = useState<DanbooruResult | null>(null);
   const [booruLoading, setBooruLoading] = useState(false);
+  const [booruPage, setBooruPage] = useState(1);
   const importRecipesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -216,22 +217,24 @@ export default function Home() {
     setNotice(`「${name}」Prompt 已复制`);
   };
 
-  const searchDanbooru = async (tag?: string) => {
+  const searchDanbooru = async (tag?: string, page = 1) => {
     if (!booruQuery.trim() && !tag) return;
     setBooruLoading(true);
     try {
       let data: DanbooruResult;
       if (window.naiDesktop) {
-        data = await window.naiDesktop.searchDanbooru({ q: booruQuery, mode: booruMode, tag });
+        data = await window.naiDesktop.searchDanbooru({ q: booruQuery, mode: booruMode, tag, page });
       } else {
         const params = new URLSearchParams({ q: booruQuery, mode: booruMode });
         if (tag) params.set("tag", tag);
+        params.set("page", String(page));
         const response = await fetch(`/api/danbooru?${params}`);
         data = await response.json() as DanbooruResult;
         if (!response.ok) throw new Error(data.error || "查询失败");
       }
       setBooruResult(data);
-      setNotice(data.posts.length ? `找到 ${data.posts.length} 张普通级参考图` : "没有找到普通级参考图");
+      setBooruPage(page);
+      setNotice(data.posts.length ? `已载入第 ${page} 页，共 ${data.posts.length} 张参考图` : "这一页没有参考图");
     } catch (error) {
       setBooruResult({ selectedTag: null, suggestions: [], posts: [], error: error instanceof Error ? error.message : "查询失败" });
       setNotice("Danbooru 查询失败，请稍后重试");
@@ -297,16 +300,16 @@ export default function Home() {
           </section>
 
           <section className="panel danbooru-panel">
-            <div className="panel-heading"><div><span className="step">DB</span><h2>Danbooru 参考库</h2></div><span className="safe-badge">普通级</span></div>
+            <div className="panel-heading"><div><span className="step">DB</span><h2>Danbooru 参考库</h2></div><span className="safe-badge">全部分级</span></div>
             <div className="booru-search">
-              <select value={booruMode} onChange={(event) => { setBooruMode(event.target.value as "artist" | "tag"); setBooruResult(null); }} aria-label="查询类型"><option value="artist">画师</option><option value="tag">提示词</option></select>
+              <select value={booruMode} onChange={(event) => { setBooruMode(event.target.value as "artist" | "tag"); setBooruResult(null); setBooruPage(1); }} aria-label="查询类型"><option value="artist">画师</option><option value="tag">提示词</option></select>
               <input value={booruQuery} onChange={(event) => setBooruQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchDanbooru(); }} placeholder={booruMode === "artist" ? "输入画师名，如 honashi" : "输入英文标签，如 cinematic lighting"} />
               <button className="button primary" disabled={booruLoading} onClick={() => searchDanbooru()}>{booruLoading ? "查询中…" : "查询"}</button>
             </div>
             {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
             {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
             {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-            {!!booruResult?.posts.length && <div className="booru-grid">{booruResult.posts.map((post) => <a href={post.postUrl} target="_blank" rel="noreferrer" key={post.id} title={[...post.artistTags, ...post.generalTags.slice(0, 5)].join(", ")}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id}</span></a>)}</div>}
+            {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <a href={post.postUrl} target="_blank" rel="noreferrer" key={post.id} title={[...post.artistTags, ...post.generalTags.slice(0, 5)].join(", ")}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></a>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><b>第 {booruPage} 页</b><button disabled={booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
             {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
           </section>
         </div>

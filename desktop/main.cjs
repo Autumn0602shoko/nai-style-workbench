@@ -32,7 +32,11 @@ const createWindow = () => {
   window.webContents.on("did-finish-load", async () => {
     if (process.env.NAI_DESKTOP_SMOKE_TEST !== "1") return;
     const ready = await window.webContents.executeJavaScript(
-      `document.body.innerText.includes("画师串工作台") && document.body.innerText.includes("Danbooru 参考库") && typeof window.naiDesktop?.searchDanbooru === "function"`,
+      `(async () => {
+        if (!document.body.innerText.includes("Danbooru 参考库") || typeof window.naiDesktop?.searchDanbooru !== "function") return false;
+        const result = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
+        return result.selectedTag === "honashi" && result.posts.length > 0;
+      })()`,
     );
     app.exit(ready ? 0 : 1);
   });
@@ -40,7 +44,7 @@ const createWindow = () => {
   window.loadFile(path.join(__dirname, "..", "desktop-dist", "renderer", "index.html"));
 };
 
-const fetchDanbooru = async ({ q = "", mode = "artist", tag = "" }) => {
+const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) => {
   const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
   const chosen = String(tag).trim().toLowerCase();
   const options = { headers: { "User-Agent": "NAI-Style-Workbench/0.3" }, signal: AbortSignal.timeout(12_000) };
@@ -56,16 +60,18 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "" }) => {
   if (!selectedTag) return { selectedTag: null, suggestions: [], posts: [] };
 
   const postsUrl = new URL("https://danbooru.donmai.us/posts.json");
-  postsUrl.searchParams.set("limit", "18");
-  postsUrl.searchParams.set("tags", `${selectedTag} rating:g`);
+  postsUrl.searchParams.set("limit", "24");
+  postsUrl.searchParams.set("page", String(Math.max(1, Math.min(1000, Number(page) || 1))));
+  postsUrl.searchParams.set("tags", selectedTag);
   const postsResponse = await fetch(postsUrl, options);
   if (!postsResponse.ok) throw new Error(`Danbooru 返回 ${postsResponse.status}`);
   const posts = await postsResponse.json();
   return {
     selectedTag,
     suggestions: tags.map((item) => ({ name: item.name, count: item.post_count })),
-    posts: posts.filter((post) => post.rating === "g" && post.preview_file_url).map((post) => ({
+    posts: posts.filter((post) => post.preview_file_url).map((post) => ({
       id: post.id,
+      rating: post.rating,
       previewUrl: post.preview_file_url,
       imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
       artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),

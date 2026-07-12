@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { parseArtistTags } from "./artist-parser";
 
 type Artist = { id: string; name: string; weight: number; enabled: boolean };
 type Recipe = {
@@ -17,20 +18,6 @@ const sample = `1.2::artist:honashi::, 1.25::artist:satou kuuki::,
 artist:takano suzu, year 2024, year 2025`;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-
-function parseArtists(input: string): Artist[] {
-  const found: Artist[] = [];
-  const seen = new Set<string>();
-  const regex = /(?:(-?\d+(?:\.\d+)?)::\s*)?artist:((?:\\,|[^,:\n])+?)(?=::|,|\n|$)/gi;
-  for (const match of input.matchAll(regex)) {
-    const name = match[2].replace(/\\,/g, ",").trim().replace(/^\(+|\)+$/g, "");
-    const key = name.toLowerCase();
-    if (!name || seen.has(key)) continue;
-    seen.add(key);
-    found.push({ id: uid(), name, weight: match[1] ? Number(match[1]) : 1, enabled: true });
-  }
-  return found;
-}
 
 function formatWeight(value: number) {
   return Number(value.toFixed(2)).toString();
@@ -87,7 +74,7 @@ export default function Home() {
   }, [artists, suffix]);
 
   const parse = () => {
-    const next = parseArtists(raw);
+    const next = parseArtistTags(raw).map((artist) => ({ ...artist, id: uid(), enabled: true }));
     setArtists(next);
     setNotice(next.length ? `已提取 ${next.length} 位画师` : "没有识别到 artist: 画师标签");
   };

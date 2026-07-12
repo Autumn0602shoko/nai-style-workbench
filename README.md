@@ -1,4 +1,43 @@
-# vinext-starter
+# 画师串工作台
+
+一个面向 NovelAI Image 的本地画师串整理工具。它可以从 Prompt、Description 或复制出的 JSON 元数据中提取画师标签，调整顺序与权重，并把常用组合保存为本地配方。
+
+## 功能
+
+- 解析普通、数字权重以及 `{}` / `[]` 强弱语法中的 `artist:` 标签
+- 调整画师名称、启用状态、顺序和权重
+- 导入参考图，并在浏览器本地保存配方
+- 搜索、更新、导入和导出配方
+- 一键生成并复制新的 NovelAI Prompt
+
+所有配方与参考图只保存在当前浏览器，不会上传到服务器。
+
+## 本地开发
+
+需要 Node.js 22.13 或更高版本。
+
+```bash
+pnpm install
+pnpm dev
+```
+
+运行完整检查：
+
+```bash
+pnpm test
+```
+
+## 权重规则
+
+工作台遵循 NovelAI 的提示词规则：每层 `{}` 将权重乘以 `1.05`，每层 `[]` 将权重除以 `1.05`；`1.25::artist:name::` 这类数字权重会按原值保留。
+
+## 技术栈
+
+React、TypeScript、vinext、Tailwind CSS 与 Cloudflare Workers。
+
+---
+
+## Starter notes
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
 
 const createWindow = () => {
@@ -11,6 +11,7 @@ const createWindow = () => {
     title: "画师串工作台",
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -31,7 +32,7 @@ const createWindow = () => {
   window.webContents.on("did-finish-load", async () => {
     if (process.env.NAI_DESKTOP_SMOKE_TEST !== "1") return;
     const ready = await window.webContents.executeJavaScript(
-      `document.body.innerText.includes("画师串工作台") && document.body.innerText.includes("粘贴与解析") && document.body.innerText.includes("权重实验室") && document.body.innerText.includes("Danbooru 参考库")`,
+      `document.body.innerText.includes("画师串工作台") && document.body.innerText.includes("Danbooru 参考库") && typeof window.naiDesktop?.searchDanbooru === "function"`,
     );
     app.exit(ready ? 0 : 1);
   });
@@ -39,8 +40,44 @@ const createWindow = () => {
   window.loadFile(path.join(__dirname, "..", "desktop-dist", "renderer", "index.html"));
 };
 
+const fetchDanbooru = async ({ q = "", mode = "artist", tag = "" }) => {
+  const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
+  const chosen = String(tag).trim().toLowerCase();
+  const options = { headers: { "User-Agent": "NAI-Style-Workbench/0.3" }, signal: AbortSignal.timeout(12_000) };
+  const tagsUrl = new URL("https://danbooru.donmai.us/tags.json");
+  tagsUrl.searchParams.set("limit", "8");
+  tagsUrl.searchParams.set("search[name_matches]", `${query || chosen}*`);
+  tagsUrl.searchParams.set("search[category]", mode === "tag" ? "0" : "1");
+  tagsUrl.searchParams.set("search[order]", "count");
+  const tagsResponse = await fetch(tagsUrl, options);
+  if (!tagsResponse.ok) throw new Error(`Danbooru 返回 ${tagsResponse.status}`);
+  const tags = await tagsResponse.json();
+  const selectedTag = chosen || tags.find((item) => item.name === query)?.name || tags[0]?.name;
+  if (!selectedTag) return { selectedTag: null, suggestions: [], posts: [] };
+
+  const postsUrl = new URL("https://danbooru.donmai.us/posts.json");
+  postsUrl.searchParams.set("limit", "18");
+  postsUrl.searchParams.set("tags", `${selectedTag} rating:g`);
+  const postsResponse = await fetch(postsUrl, options);
+  if (!postsResponse.ok) throw new Error(`Danbooru 返回 ${postsResponse.status}`);
+  const posts = await postsResponse.json();
+  return {
+    selectedTag,
+    suggestions: tags.map((item) => ({ name: item.name, count: item.post_count })),
+    posts: posts.filter((post) => post.rating === "g" && post.preview_file_url).map((post) => ({
+      id: post.id,
+      previewUrl: post.preview_file_url,
+      imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
+      artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
+      generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
+      postUrl: `https://danbooru.donmai.us/posts/${post.id}`,
+    })),
+  };
+};
+
 app.whenReady().then(() => {
   app.setAppUserModelId("com.nai.styleworkbench");
+  ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

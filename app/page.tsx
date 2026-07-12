@@ -16,6 +16,12 @@ type Recipe = {
 type DanbooruPost = { id: number; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[] };
 type DanbooruResult = { selectedTag: string | null; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
 
+declare global {
+  interface Window {
+    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string }) => Promise<DanbooruResult> };
+  }
+}
+
 const sample = `1.2::artist:honashi::, 1.25::artist:satou kuuki::,
 1.13::artist:jackdempa::, 0.8::artist:dk.senie::,
 artist:takano suzu, year 2024, year 2025`;
@@ -214,14 +220,16 @@ export default function Home() {
     if (!booruQuery.trim() && !tag) return;
     setBooruLoading(true);
     try {
-      const base = window.location.protocol === "file:"
-        ? "https://nai-artist-workbench.banubate96.chatgpt.site/api/danbooru"
-        : "/api/danbooru";
-      const params = new URLSearchParams({ q: booruQuery, mode: booruMode });
-      if (tag) params.set("tag", tag);
-      const response = await fetch(`${base}?${params}`);
-      const data = await response.json() as DanbooruResult;
-      if (!response.ok) throw new Error(data.error || "查询失败");
+      let data: DanbooruResult;
+      if (window.naiDesktop) {
+        data = await window.naiDesktop.searchDanbooru({ q: booruQuery, mode: booruMode, tag });
+      } else {
+        const params = new URLSearchParams({ q: booruQuery, mode: booruMode });
+        if (tag) params.set("tag", tag);
+        const response = await fetch(`/api/danbooru?${params}`);
+        data = await response.json() as DanbooruResult;
+        if (!response.ok) throw new Error(data.error || "查询失败");
+      }
       setBooruResult(data);
       setNotice(data.posts.length ? `找到 ${data.posts.length} 张普通级参考图` : "没有找到普通级参考图");
     } catch (error) {

@@ -52,7 +52,7 @@
       "output": "release"
     },
     "files": [
-      "desktop/main.cjs",
+      "desktop/*.cjs",
       "desktop-dist/renderer/**/*"
     ],
     "win": {

@@ -2,8 +2,9 @@
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { parseArtistTags } from "./artist-parser";
+import { createWeightExperiments } from "./weight-experiments";
 
-type Artist = { id: string; name: string; weight: number; enabled: boolean };
+type Artist = { id: string; name: string; weight: number; enabled: boolean; locked?: boolean };
 type Recipe = {
   id: string;
   name: string;
@@ -55,6 +56,7 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [experimentAmplitude, setExperimentAmplitude] = useState(0.2);
   const importRecipesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,6 +74,19 @@ export default function Home() {
       .join(", ");
     return [artistPart, suffix.trim()].filter(Boolean).join(", ");
   }, [artists, suffix]);
+
+  const experiments = useMemo(
+    () => createWeightExperiments(artists, experimentAmplitude),
+    [artists, experimentAmplitude],
+  );
+
+  const promptForWeights = (weights: number[]) => {
+    const artistPart = artists
+      .filter((artist) => artist.enabled)
+      .map((artist) => `${formatWeight(weights[artists.indexOf(artist)])}::artist:${artist.name}::`)
+      .join(", ");
+    return [artistPart, suffix.trim()].filter(Boolean).join(", ");
+  };
 
   const parse = () => {
     const next = parseArtistTags(raw).map((artist) => ({ ...artist, id: uid(), enabled: true }));
@@ -177,6 +192,18 @@ export default function Home() {
     setNotice("新版 Prompt 已复制");
   };
 
+  const applyExperiment = (weights: number[], name: string) => {
+    setArtists((current) => current.map((artist, index) => ({ ...artist, weight: weights[index] })));
+    setActiveRecipeId(null);
+    setRecipeName(`${recipeName.replace(/ · .+$/, "")} · ${name}`);
+    setNotice(`已应用「${name}」，可继续微调或保存为新配方`);
+  };
+
+  const copyExperiment = async (weights: number[], name: string) => {
+    await navigator.clipboard.writeText(promptForWeights(weights));
+    setNotice(`「${name}」Prompt 已复制`);
+  };
+
   return (
     <main>
       <header className="topbar">
@@ -242,6 +269,7 @@ export default function Home() {
                     <a href={`https://aitag.win/?q=${encodeURIComponent(`artist:${artist.name}`)}`} target="_blank" rel="noreferrer">AI TAG</a>
                     <a href={`https://danbooru.donmai.us/posts?tags=${encodeURIComponent(artist.name.replace(/ /g, "_"))}`} target="_blank" rel="noreferrer">作品</a>
                   </div>
+                  <button className={`lock ${artist.locked ? "active" : ""}`} title={artist.locked ? "解除权重锁定" : "锁定权重"} aria-label={`${artist.locked ? "解除锁定" : "锁定"} ${artist.name}`} onClick={() => updateArtist(artist.id, { locked: !artist.locked })}>{artist.locked ? "锁" : "○"}</button>
                   <div className="artist-order"><button aria-label={`上移 ${artist.name}`} disabled={index === 0} onClick={() => moveArtist(index, -1)}>↑</button><button aria-label={`下移 ${artist.name}`} disabled={index === artists.length - 1} onClick={() => moveArtist(index, 1)}>↓</button></div>
                   <button className="remove" aria-label={`删除 ${artist.name}`} onClick={() => setArtists((current) => current.filter((item) => item.id !== artist.id))}>×</button>
                 </article>
@@ -254,6 +282,22 @@ export default function Home() {
             <div className="panel-heading"><div><span className="step">04</span><h2>生成新版 Prompt</h2></div><button className="button primary" onClick={copyPrompt}>复制 Prompt</button></div>
             <label className="suffix-label">追加通用提示词<input value={suffix} onChange={(event) => setSuffix(event.target.value)} /></label>
             <pre>{prompt || "等待添加画师……"}</pre>
+          </section>
+
+          <section className="panel experiment-panel">
+            <div className="panel-heading"><div><span className="step">05</span><h2>权重实验室</h2></div><span className="counter">锁定画师不会变化</span></div>
+            <div className="experiment-controls">
+              <label>变化幅度 <strong>±{experimentAmplitude.toFixed(2)}</strong><input type="range" min="0.05" max="0.5" step="0.05" value={experimentAmplitude} onChange={(event) => setExperimentAmplitude(Number(event.target.value))} /></label>
+            </div>
+            {!artists.length ? <div className="experiment-empty">添加画师后，这里会自动生成四种权重方向。</div> : <div className="experiment-grid">
+              {experiments.map((experiment) => (
+                <article className="experiment-card" key={experiment.id}>
+                  <div><h3>{experiment.name}</h3><p>{experiment.description}</p></div>
+                  <div className="weight-chips">{experiment.weights.map((weight, index) => <span className={artists[index].locked ? "locked" : ""} key={artists[index].id}>{formatWeight(weight)}</span>)}</div>
+                  <div className="experiment-actions"><button onClick={() => copyExperiment(experiment.weights, experiment.name)}>复制</button><button onClick={() => applyExperiment(experiment.weights, experiment.name)}>应用方案</button></div>
+                </article>
+              ))}
+            </div>}
           </section>
         </div>
       </section>

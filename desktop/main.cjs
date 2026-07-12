@@ -31,7 +31,7 @@ const createWindow = () => {
   window.webContents.on("did-finish-load", async () => {
     if (process.env.NAI_DESKTOP_SMOKE_TEST !== "1") return;
     const ready = await window.webContents.executeJavaScript(
-      `document.body.innerText.includes("画师串工作台") && document.body.innerText.includes("粘贴与解析")`,
+      `document.body.innerText.includes("画师串工作台") && document.body.innerText.includes("粘贴与解析") && document.body.innerText.includes("权重实验室")`,
     );
     app.exit(ready ? 0 : 1);
   });

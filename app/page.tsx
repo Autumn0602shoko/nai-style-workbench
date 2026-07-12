@@ -70,6 +70,7 @@ export default function Home() {
   const [booruResult, setBooruResult] = useState<DanbooruResult | null>(null);
   const [booruLoading, setBooruLoading] = useState(false);
   const [booruPage, setBooruPage] = useState(1);
+  const [activeView, setActiveView] = useState<"workbench" | "danbooru">("workbench");
   const importRecipesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -264,13 +265,35 @@ export default function Home() {
           <p className="eyebrow">NOVELAI STYLE WORKBENCH</p>
           <h1>画师串工作台</h1>
         </div>
+        <nav className="top-nav" aria-label="主功能">
+          <button className={activeView === "workbench" ? "active" : ""} onClick={() => setActiveView("workbench")}>画师串工作台</button>
+          <button className={activeView === "danbooru" ? "active" : ""} onClick={() => setActiveView("danbooru")}>Danbooru 画廊</button>
+        </nav>
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
-          <button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
-          <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button>
+          {activeView === "workbench" && <><button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
+          <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button></>}
         </div>
       </header>
 
+      {activeView === "danbooru" && <section className="gallery-page">
+        <div className="gallery-title"><div><p className="eyebrow">DANBOORU EXPLORER</p><h2>画师与提示词参考画廊</h2><p>查询标签、浏览作品，并把画师或提示词送回工作台。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>返回工作台</button></div>
+        <section className="panel danbooru-panel">
+          <div className="panel-heading"><div><span className="step">DB</span><h2>Danbooru 参考库</h2></div><span className="safe-badge">全部分级</span></div>
+          <div className="booru-search">
+            <select value={booruMode} onChange={(event) => { setBooruMode(event.target.value as "artist" | "tag"); setBooruResult(null); setBooruPage(1); }} aria-label="查询类型"><option value="artist">画师</option><option value="tag">提示词</option></select>
+            <input value={booruQuery} onChange={(event) => setBooruQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchDanbooru(); }} placeholder={booruMode === "artist" ? "输入画师名，如 honashi" : "输入英文标签，如 cinematic lighting"} />
+            <button className="button primary" disabled={booruLoading} onClick={() => searchDanbooru()}>{booruLoading ? "查询中…" : "查询"}</button>
+          </div>
+          {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
+          {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
+          {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
+          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <a href={post.postUrl} target="_blank" rel="noreferrer" key={post.id} title={[...post.artistTags, ...post.generalTags.slice(0, 5)].join(", ")}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></a>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><b>第 {booruPage} 页</b><button disabled={booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
+          {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
+        </section>
+      </section>}
+
+      {activeView === "workbench" && <>
       <section className="workspace">
         <div className="column left-column">
           <section className="panel parser-panel">
@@ -299,19 +322,6 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="panel danbooru-panel">
-            <div className="panel-heading"><div><span className="step">DB</span><h2>Danbooru 参考库</h2></div><span className="safe-badge">全部分级</span></div>
-            <div className="booru-search">
-              <select value={booruMode} onChange={(event) => { setBooruMode(event.target.value as "artist" | "tag"); setBooruResult(null); setBooruPage(1); }} aria-label="查询类型"><option value="artist">画师</option><option value="tag">提示词</option></select>
-              <input value={booruQuery} onChange={(event) => setBooruQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchDanbooru(); }} placeholder={booruMode === "artist" ? "输入画师名，如 honashi" : "输入英文标签，如 cinematic lighting"} />
-              <button className="button primary" disabled={booruLoading} onClick={() => searchDanbooru()}>{booruLoading ? "查询中…" : "查询"}</button>
-            </div>
-            {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
-            {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
-            {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-            {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <a href={post.postUrl} target="_blank" rel="noreferrer" key={post.id} title={[...post.artistTags, ...post.generalTags.slice(0, 5)].join(", ")}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></a>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><b>第 {booruPage} 页</b><button disabled={booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
-            {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
-          </section>
         </div>
 
         <div className="column right-column">
@@ -388,6 +398,7 @@ export default function Home() {
           ))}
         </div>
       </section>
+      </>}
     </main>
   );
 }

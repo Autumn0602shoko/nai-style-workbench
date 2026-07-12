@@ -11,6 +11,9 @@ main { min-height:100vh; padding-bottom:64px; }
 .topbar h1,.library h2 { margin:2px 0 0; font-size:28px; letter-spacing:.02em; }
 .eyebrow { margin:0; color:#aab9d8; font-size:11px; font-weight:800; letter-spacing:.18em; }
 .top-actions { display:flex; align-items:center; gap:10px; }
+.top-nav { display:flex; align-self:stretch; gap:4px; padding:10px 0; }
+.top-nav button { min-width:118px; padding:0 16px; border:0; border-radius:8px; background:transparent; color:#aeb9cc; font-weight:750; }
+.top-nav button.active { background:#2a3650; color:#fff; box-shadow:inset 0 -2px var(--orange); }
 .status { max-width:270px; color:#bbc4d3; font-size:12px; text-align:right; }
 .button { min-height:40px; border-radius:8px; border:1px solid transparent; padding:0 16px; font-weight:700; }
 .button.primary { background:var(--blue); color:#fff; box-shadow:0 3px 0 #24458e; }
@@ -36,7 +39,7 @@ main { min-height:100vh; padding-bottom:64px; }
 .image-grid img { width:100%; height:100%; object-fit:cover; }
 .image-grid button { position:absolute; top:5px; right:5px; width:26px; height:26px; border:0; border-radius:50%; background:rgba(12,19,31,.75); color:#fff; }
 .danbooru-panel { border-top:3px solid #5b8c63; }
-.safe-badge { padding:4px 8px; border-radius:99px; background:#e8f4e9; color:#397047; font-size:10px; font-weight:800; }
+.safe-badge { padding:4px 8px; border-radius:99px; background:#fff0e4; color:#a9572d; font-size:10px; font-weight:800; }
 .booru-search { display:grid; grid-template-columns:76px 1fr auto; gap:8px; padding:14px; }
 .booru-search select,.booru-search input { min-width:0; min-height:40px; padding:0 10px; border:1px solid var(--line); border-radius:7px; background:#fff; }
 .booru-search button:disabled { opacity:.55; cursor:wait; }
@@ -56,6 +59,13 @@ main { min-height:100vh; padding-bottom:64px; }
 .booru-pages b { color:var(--muted); font-size:10px; }
 .booru-intro,.booru-error { padding:24px 18px; border-top:1px solid var(--line); color:var(--muted); text-align:center; font-size:11px; line-height:1.6; }
 .booru-error { color:#a14c42; background:#fff7f6; }
+.gallery-page { width:min(1480px,94vw); margin:24px auto 0; }
+.gallery-title { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:14px; }
+.gallery-title h2 { margin:3px 0 4px; font-size:26px; }
+.gallery-title p:not(.eyebrow) { margin:0; color:var(--muted); font-size:12px; }
+.gallery-title .eyebrow { color:#78849a; }
+.gallery-page .booru-grid { grid-template-columns:repeat(8,1fr); gap:8px; padding:16px; }
+.gallery-page .booru-grid a { aspect-ratio:1; border-radius:8px; }
 .recipe-name-row { display:flex; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); background:#fafbfc; }
 .recipe-name-row label { display:grid; grid-template-columns:auto minmax(160px,1fr); gap:10px; align-items:center; flex:1; color:var(--muted); font-size:12px; font-weight:700; }
 .recipe-name-row input,.suffix-label input { min-height:40px; border:1px solid var(--line); border-radius:7px; padding:0 11px; color:var(--ink); background:#fff; }
@@ -118,5 +128,5 @@ main { min-height:100vh; padding-bottom:64px; }
 .recipe-actions button { border:0; background:none; color:var(--blue); font-size:11px; font-weight:800; }
 .recipe-actions button+button { color:#a06b68; }
 .library-empty { grid-column:1/-1; padding:35px; border:1px dashed #bbc4d0; border-radius:10px; color:var(--muted); text-align:center; }
-@media (max-width:980px) { .workspace { grid-template-columns:1fr; } .recipe-grid { grid-template-columns:1fr 1fr; } }
-@media (max-width:650px) { .topbar { align-items:flex-start; flex-direction:column; } .top-actions { width:100%; flex-wrap:wrap; } .status { width:100%; max-width:none; text-align:left; } .workspace,.library { width:calc(100vw - 24px); } .artist-row { grid-template-columns:28px 25px 1fr 66px 30px 46px 26px; } .artist-main { grid-template-columns:1fr; } .artist-links { display:none; } .recipe-name-row,.suffix-label { grid-template-columns:1fr; flex-direction:column; } .recipe-name-row label { width:100%; grid-template-columns:1fr; } .booru-search { grid-template-columns:74px 1fr; } .booru-search .button { grid-column:1/-1; } .booru-grid { grid-template-columns:repeat(3,1fr); } .experiment-grid,.recipe-grid { grid-template-columns:1fr; } }
+@media (max-width:980px) { .topbar { flex-wrap:wrap; } .top-nav { order:3; width:100%; min-height:54px; } .workspace { grid-template-columns:1fr; } .recipe-grid { grid-template-columns:1fr 1fr; } .gallery-page .booru-grid { grid-template-columns:repeat(5,1fr); } }
+@media (max-width:650px) { .topbar { align-items:flex-start; flex-direction:column; } .top-nav { order:initial; width:100%; } .top-nav button { flex:1; min-height:44px; min-width:0; } .top-actions { width:100%; flex-wrap:wrap; } .status { width:100%; max-width:none; text-align:left; } .workspace,.library,.gallery-page { width:calc(100vw - 24px); } .gallery-title { align-items:flex-start; flex-direction:column; } .artist-row { grid-template-columns:28px 25px 1fr 66px 30px 46px 26px; } .artist-main { grid-template-columns:1fr; } .artist-links { display:none; } .recipe-name-row,.suffix-label { grid-template-columns:1fr; flex-direction:column; } .recipe-name-row label { width:100%; grid-template-columns:1fr; } .booru-search { grid-template-columns:74px 1fr; } .booru-search .button { grid-column:1/-1; } .gallery-page .booru-grid { grid-template-columns:repeat(3,1fr); } .experiment-grid,.recipe-grid { grid-template-columns:1fr; } }

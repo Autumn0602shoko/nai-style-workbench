@@ -31,14 +31,20 @@ const createWindow = () => {
 
   window.webContents.on("did-finish-load", async () => {
     if (process.env.NAI_DESKTOP_SMOKE_TEST !== "1") return;
-    const ready = await window.webContents.executeJavaScript(
+    try {
+      const result = await window.webContents.executeJavaScript(
       `(async () => {
-        if (!document.body.innerText.includes("Danbooru 参考库") || typeof window.naiDesktop?.searchDanbooru !== "function") return false;
-        const result = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
-        return result.selectedTag === "honashi" && result.posts.length > 0;
+        if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
+        const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
+        return { ready: data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")), count: data.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
-    );
-    app.exit(ready ? 0 : 1);
+      );
+      console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
+      app.exit(result.ready ? 0 : 1);
+    } catch (error) {
+      console.error("NAI_SMOKE_ERROR", error);
+      app.exit(2);
+    }
   });
 
   window.loadFile(path.join(__dirname, "..", "desktop-dist", "renderer", "index.html"));
@@ -66,18 +72,28 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
   const postsResponse = await fetch(postsUrl, options);
   if (!postsResponse.ok) throw new Error(`Danbooru 返回 ${postsResponse.status}`);
   const posts = await postsResponse.json();
+  const visiblePosts = posts.filter((post) => post.preview_file_url);
+  const mappedPosts = await Promise.all(visiblePosts.map(async (post) => {
+    try {
+      const imageResponse = await fetch(post.preview_file_url, { headers: options.headers, signal: AbortSignal.timeout(20_000) });
+      if (!imageResponse.ok) return null;
+      const type = imageResponse.headers.get("content-type") || "image/jpeg";
+      const bytes = Buffer.from(await imageResponse.arrayBuffer());
+      return {
+        id: post.id,
+        rating: post.rating,
+        previewUrl: `data:${type};base64,${bytes.toString("base64")}`,
+        imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
+        artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
+        generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
+        postUrl: `https://danbooru.donmai.us/posts/${post.id}`,
+      };
+    } catch { return null; }
+  }));
   return {
     selectedTag,
     suggestions: tags.map((item) => ({ name: item.name, count: item.post_count })),
-    posts: posts.filter((post) => post.preview_file_url).map((post) => ({
-      id: post.id,
-      rating: post.rating,
-      previewUrl: post.preview_file_url,
-      imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
-      artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
-      generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
-      postUrl: `https://danbooru.donmai.us/posts/${post.id}`,
-    })),
+    posts: mappedPosts.filter(Boolean),
   };
 };
 

@@ -22,6 +22,19 @@ const fetchJson = async <T,>(url: URL): Promise<T> => {
 };
 
 export async function GET(request: NextRequest) {
+  const image = request.nextUrl.searchParams.get("image");
+  if (image) {
+    try {
+      const imageUrl = new URL(image);
+      if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") throw new Error("invalid host");
+      const response = await fetch(imageUrl, { headers, signal: AbortSignal.timeout(12_000) });
+      if (!response.ok || !response.body) throw new Error("image unavailable");
+      return new NextResponse(response.body, { headers: { "Content-Type": response.headers.get("content-type") || "image/jpeg", "Cache-Control": "public, max-age=86400" } });
+    } catch {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
+
   const query = (request.nextUrl.searchParams.get("q") || "").trim().toLowerCase().replace(/\s+/g, "_");
   const mode = request.nextUrl.searchParams.get("mode") === "tag" ? "tag" : "artist";
   const chosen = (request.nextUrl.searchParams.get("tag") || "").trim().toLowerCase();
@@ -53,7 +66,7 @@ export async function GET(request: NextRequest) {
         .map((post) => ({
           id: post.id,
           rating: post.rating,
-          previewUrl: post.preview_file_url,
+          previewUrl: `/api/danbooru?image=${encodeURIComponent(post.preview_file_url!)}`,
           imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
           source: post.source || null,
           artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),

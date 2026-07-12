@@ -33,10 +33,19 @@ const fetchTagSuggestions = async (query: string, mode: "artist" | "tag", limit 
     url.searchParams.set("search[order]", "count");
     return fetchJson<DanbooruTag[]>(url);
   };
-  const prefix = await fetchMatches(`${query}*`);
-  if (prefix.length >= limit) return prefix;
-  const contains = await fetchMatches(`*${query}*`);
+  const [prefix, contains] = await Promise.all([
+    fetchMatches(`${query}*`),
+    fetchMatches(`*${query}*`),
+  ]);
   return [...new Map([...prefix, ...contains].map((tag) => [tag.name, tag])).values()].slice(0, limit);
+};
+
+const fetchPosts = (tag: string, page: number) => {
+  const postsUrl = new URL("/posts.json", DANBOORU);
+  postsUrl.searchParams.set("limit", "24");
+  postsUrl.searchParams.set("page", String(page));
+  postsUrl.searchParams.set("tags", tag);
+  return fetchJson<DanbooruPost[]>(postsUrl);
 };
 
 export async function GET(request: NextRequest) {
@@ -61,19 +70,24 @@ export async function GET(request: NextRequest) {
 
   try {
     const isSuggestion = request.nextUrl.searchParams.get("suggest") === "1";
-    const tags = await fetchTagSuggestions(query || chosen, mode, isSuggestion ? 30 : 8);
+    const tagsPromise = fetchTagSuggestions(query || chosen, mode, isSuggestion ? 30 : 8);
     if (isSuggestion) {
+      const tags = await tagsPromise;
       return NextResponse.json({ suggestions: tags.map((tag) => ({ name: tag.name, count: tag.post_count })) }, { headers: { "Cache-Control": "public, max-age=120" } });
     }
-    const selectedTag = chosen || tags.find((tag) => tag.name === query)?.name || tags[0]?.name;
+    let tags: DanbooruTag[];
+    let posts: DanbooruPost[];
+    let selectedTag: string | undefined;
+    if (chosen) {
+      selectedTag = chosen;
+      [tags, posts] = await Promise.all([tagsPromise, fetchPosts(selectedTag, page)]);
+    } else {
+      tags = await tagsPromise;
+      selectedTag = tags.find((tag) => tag.name === query)?.name || tags[0]?.name;
+      posts = selectedTag ? await fetchPosts(selectedTag, page) : [];
+    }
 
     if (!selectedTag) return NextResponse.json({ suggestions: [], posts: [], selectedTag: null });
-
-    const postsUrl = new URL("/posts.json", DANBOORU);
-    postsUrl.searchParams.set("limit", "24");
-    postsUrl.searchParams.set("page", String(page));
-    postsUrl.searchParams.set("tags", selectedTag);
-    const posts = await fetchJson<DanbooruPost[]>(postsUrl);
 
     return NextResponse.json({
       selectedTag,

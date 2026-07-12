@@ -80,6 +80,7 @@ export default function Home() {
   const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRequestId = useRef(0);
   const importRecipesRef = useRef<HTMLInputElement>(null);
+  const autocompleteCache = useRef(new Map<string, { name: string; count: number }[]>());
 
   useEffect(() => {
     try {
@@ -96,6 +97,9 @@ export default function Home() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
+        const cacheKey = `${booruMode}:${query.toLowerCase().replace(/\s+/g, "_")}`;
+        const cached = autocompleteCache.current.get(cacheKey);
+        if (cached) { if (!cancelled) setAutocomplete(cached); return; }
         let suggestions: { name: string; count: number }[];
         if (window.naiDesktop) suggestions = await window.naiDesktop.suggestDanbooru({ q: query, mode: booruMode });
         else {
@@ -104,6 +108,7 @@ export default function Home() {
           const data = await response.json() as { suggestions: { name: string; count: number }[] };
           suggestions = data.suggestions || [];
         }
+        autocompleteCache.current.set(cacheKey, suggestions);
         if (!cancelled) setAutocomplete(suggestions);
       } catch { if (!cancelled) setAutocomplete([]); }
     }, 320);

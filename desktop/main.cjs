@@ -51,26 +51,52 @@ const createWindow = () => {
   window.loadFile(path.join(__dirname, "..", "desktop-dist", "renderer", "index.html"));
 };
 
+const danbooruSearchCache = new Map();
+const danbooruSuggestionCache = new Map();
+const getCached = (cache, key, maxAge) => {
+  const hit = cache.get(key);
+  if (!hit || Date.now() - hit.time > maxAge) { cache.delete(key); return null; }
+  return hit.value;
+};
+const setCached = (cache, key, value, maxEntries = 12) => {
+  cache.set(key, { time: Date.now(), value });
+  if (cache.size > maxEntries) cache.delete(cache.keys().next().value);
+  return value;
+};
+
 const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) => {
   const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
   const chosen = String(tag).trim().toLowerCase();
+  const normalizedPage = Math.max(1, Math.min(1000, Number(page) || 1));
+  const cacheKey = `${mode}:${chosen || query}:${normalizedPage}`;
+  const cached = getCached(danbooruSearchCache, cacheKey, 2 * 60_000);
+  if (cached) return cached;
   const options = { headers: { "User-Agent": "NAI-Style-Workbench/0.3" }, signal: AbortSignal.timeout(12_000) };
   const tagsUrl = new URL("https://danbooru.donmai.us/tags.json");
   tagsUrl.searchParams.set("limit", "8");
   tagsUrl.searchParams.set("search[name_matches]", `${query || chosen}*`);
   tagsUrl.searchParams.set("search[category]", mode === "tag" ? "0" : "1");
   tagsUrl.searchParams.set("search[order]", "count");
+  const earlyPostsUrl = chosen ? new URL("https://danbooru.donmai.us/posts.json") : null;
+  if (earlyPostsUrl) {
+    earlyPostsUrl.searchParams.set("limit", "24");
+    earlyPostsUrl.searchParams.set("page", String(normalizedPage));
+    earlyPostsUrl.searchParams.set("tags", chosen);
+  }
+  const earlyPostsResponse = earlyPostsUrl ? fetch(earlyPostsUrl, options) : null;
   const tagsResponse = await fetch(tagsUrl, options);
   if (!tagsResponse.ok) throw new Error(`Danbooru 返回 ${tagsResponse.status}`);
   const tags = await tagsResponse.json();
   const selectedTag = chosen || tags.find((item) => item.name === query)?.name || tags[0]?.name;
   if (!selectedTag) return { selectedTag: null, suggestions: [], posts: [] };
 
-  const postsUrl = new URL("https://danbooru.donmai.us/posts.json");
-  postsUrl.searchParams.set("limit", "24");
-  postsUrl.searchParams.set("page", String(Math.max(1, Math.min(1000, Number(page) || 1))));
-  postsUrl.searchParams.set("tags", selectedTag);
-  const postsResponse = await fetch(postsUrl, options);
+  const postsUrl = earlyPostsUrl || new URL("https://danbooru.donmai.us/posts.json");
+  if (!earlyPostsUrl) {
+    postsUrl.searchParams.set("limit", "24");
+    postsUrl.searchParams.set("page", String(normalizedPage));
+    postsUrl.searchParams.set("tags", selectedTag);
+  }
+  const postsResponse = earlyPostsResponse ? await earlyPostsResponse : await fetch(postsUrl, options);
   if (!postsResponse.ok) throw new Error(`Danbooru 返回 ${postsResponse.status}`);
   const posts = await postsResponse.json();
   const visiblePosts = posts.filter((post) => post.preview_file_url);
@@ -94,12 +120,12 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
       };
     } catch { return null; }
   }));
-  return {
+  return setCached(danbooruSearchCache, cacheKey, {
     selectedTag,
     totalCount: tags.find((item) => item.name === selectedTag)?.post_count || 0,
     suggestions: tags.map((item) => ({ name: item.name, count: item.post_count })),
     posts: mappedPosts.filter(Boolean),
-  };
+  });
 };
 
 app.whenReady().then(() => {
@@ -108,6 +134,9 @@ app.whenReady().then(() => {
   ipcMain.handle("danbooru:suggest", async (_event, { q = "", mode = "artist" }) => {
     const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
     if (query.length < 2) return [];
+    const cacheKey = `${mode}:${query}`;
+    const cached = getCached(danbooruSuggestionCache, cacheKey, 5 * 60_000);
+    if (cached) return cached;
     const url = new URL("https://danbooru.donmai.us/tags.json");
     url.searchParams.set("limit", "30");
     url.searchParams.set("search[name_matches]", `*${query}*`);
@@ -115,9 +144,10 @@ app.whenReady().then(() => {
     url.searchParams.set("search[order]", "count");
     const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.6.1" }, signal: AbortSignal.timeout(8_000) });
     if (!response.ok) throw new Error(`Danbooru 返回 ${response.status}`);
-    return (await response.json())
+    const suggestions = (await response.json())
       .sort((left, right) => Number(right.name.startsWith(query)) - Number(left.name.startsWith(query)) || right.post_count - left.post_count)
       .map((item) => ({ name: item.name, count: item.post_count }));
+    return setCached(danbooruSuggestionCache, cacheKey, suggestions, 60);
   });
   ipcMain.handle("danbooru:image", async (_event, value) => {
     const url = new URL(String(value));

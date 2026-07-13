@@ -38,7 +38,8 @@ const createWindow = () => {
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
         const character = await window.naiDesktop.searchDanbooru({ q: "mika_(blue_archive)", mode: "tag", page: 1 });
-        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")) && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, characterTag: character.selectedTag, characterCount: character.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        const combo = await window.naiDesktop.searchDanbooru({ q: "", mode: "tag", combo: ["mika_(blue_archive)", "1girl"], page: 1 });
+        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")) && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -65,9 +66,11 @@ const setCached = (cache, key, value, maxEntries = 12) => {
   return value;
 };
 
-const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) => {
+const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], page = 1 }) => {
   const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
-  const chosen = String(tag).trim().toLowerCase();
+  const comboTags = [...new Set((Array.isArray(combo) ? combo : []).map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
+  const chosen = comboTags.length ? comboTags.join(" ") : String(tag).trim().toLowerCase();
+  const isCombo = comboTags.length > 0;
   const normalizedPage = Math.max(1, Math.min(1000, Number(page) || 1));
   const cacheKey = `${mode}:${chosen || query}:${normalizedPage}`;
   const cached = getCached(danbooruSearchCache, cacheKey, 2 * 60_000);
@@ -85,9 +88,9 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
     earlyPostsUrl.searchParams.set("tags", chosen);
   }
   const earlyPostsResponse = earlyPostsUrl ? fetch(earlyPostsUrl, options) : null;
-  const tagsResponse = await fetch(tagsUrl, options);
-  if (!tagsResponse.ok) throw new Error(`Danbooru 返回 ${tagsResponse.status}`);
-  const tags = await tagsResponse.json();
+  const tagsResponse = isCombo ? null : await fetch(tagsUrl, options);
+  if (tagsResponse && !tagsResponse.ok) throw new Error(`Danbooru 返回 ${tagsResponse.status}`);
+  const tags = tagsResponse ? await tagsResponse.json() : [];
   const selectedTag = chosen || tags.find((item) => item.name === query)?.name || tags[0]?.name;
   if (!selectedTag) return { selectedTag: null, suggestions: [], posts: [] };
 
@@ -121,9 +124,16 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", page = 1 }) =>
       };
     } catch { return null; }
   }));
+  let totalCount = tags.find((item) => item.name === selectedTag)?.post_count || 0;
+  if (isCombo) {
+    const countUrl = new URL("https://danbooru.donmai.us/counts/posts.json");
+    countUrl.searchParams.set("tags", selectedTag);
+    const countResponse = await fetch(countUrl, options);
+    if (countResponse.ok) totalCount = (await countResponse.json()).counts?.posts || 0;
+  }
   return setCached(danbooruSearchCache, cacheKey, {
     selectedTag,
-    totalCount: tags.find((item) => item.name === selectedTag)?.post_count || 0,
+    totalCount,
     suggestions: tags.map((item) => ({ name: item.name, count: item.post_count })),
     posts: mappedPosts.filter(Boolean),
   });

@@ -48,6 +48,13 @@ const fetchPosts = (tag: string, page: number) => {
   return fetchJson<DanbooruPost[]>(postsUrl);
 };
 
+const fetchPostCount = async (tags: string) => {
+  const countUrl = new URL("/counts/posts.json", DANBOORU);
+  countUrl.searchParams.set("tags", tags);
+  const data = await fetchJson<{ counts?: { posts?: number } }>(countUrl);
+  return data.counts?.posts || 0;
+};
+
 export async function GET(request: NextRequest) {
   const image = request.nextUrl.searchParams.get("image");
   if (image) {
@@ -65,11 +72,34 @@ export async function GET(request: NextRequest) {
   const query = (request.nextUrl.searchParams.get("q") || "").trim().toLowerCase().replace(/\s+/g, "_");
   const mode = request.nextUrl.searchParams.get("mode") === "tag" ? "tag" : "artist";
   const chosen = (request.nextUrl.searchParams.get("tag") || "").trim().toLowerCase();
+  const combo = (request.nextUrl.searchParams.get("combo") || "").split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean);
   const page = Math.max(1, Math.min(1000, Number(request.nextUrl.searchParams.get("page")) || 1));
-  if (!query && !chosen) return NextResponse.json({ error: "请输入画师或提示词" }, { status: 400 });
+  if (!query && !chosen && !combo.length) return NextResponse.json({ error: "请输入画师或提示词" }, { status: 400 });
 
   try {
     const isSuggestion = request.nextUrl.searchParams.get("suggest") === "1";
+    if (combo.length) {
+      const expression = [...new Set(combo)].join(" ");
+      const [posts, totalCount] = await Promise.all([fetchPosts(expression, page), fetchPostCount(expression)]);
+      return NextResponse.json({
+        selectedTag: expression,
+        totalCount,
+        suggestions: [],
+        posts: posts.filter((post) => post.preview_file_url).map((post) => ({
+          id: post.id,
+          rating: post.rating,
+          previewUrl: `/api/danbooru?image=${encodeURIComponent(post.preview_file_url!)}`,
+          imageUrl: `/api/danbooru?image=${encodeURIComponent(post.large_file_url || post.file_url || post.preview_file_url!)}`,
+          source: post.source || null,
+          artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
+          generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
+          characterTags: (post.tag_string_character || "").split(" ").filter(Boolean),
+          copyrightTags: (post.tag_string_copyright || "").split(" ").filter(Boolean),
+          metaTags: (post.tag_string_meta || "").split(" ").filter(Boolean).slice(0, 12),
+          postUrl: `${DANBOORU}/posts/${post.id}`,
+        })),
+      }, { headers: { "Cache-Control": "public, max-age=300" } });
+    }
     const tagsPromise = fetchTagSuggestions(query || chosen, mode, isSuggestion ? 30 : 8);
     if (isSuggestion) {
       const tags = await tagsPromise;

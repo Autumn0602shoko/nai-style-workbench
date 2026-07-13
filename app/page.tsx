@@ -15,10 +15,11 @@ type Recipe = {
 };
 type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[]; characterTags: string[]; copyrightTags: string[]; metaTags: string[] };
 type DanbooruResult = { selectedTag: string | null; totalCount?: number; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
+type PromptBasket = Record<string, string[]>;
 
 declare global {
   interface Window {
-    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; page?: number }) => Promise<DanbooruResult>; suggestDanbooru: (request: { q: string; mode: "artist" | "tag" }) => Promise<{ name: string; count: number }[]>; loadDanbooruImage: (url: string) => Promise<string> };
+    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; combo?: string[]; page?: number }) => Promise<DanbooruResult>; suggestDanbooru: (request: { q: string; mode: "artist" | "tag" }) => Promise<{ name: string; count: number }[]>; loadDanbooruImage: (url: string) => Promise<string> };
   }
 }
 
@@ -72,6 +73,9 @@ export default function Home() {
   const [booruPage, setBooruPage] = useState(1);
   const [booruPageInput, setBooruPageInput] = useState("1");
   const [autocomplete, setAutocomplete] = useState<{ name: string; count: number }[]>([]);
+  const [booruFilters, setBooruFilters] = useState<string[]>([]);
+  const [activeCombo, setActiveCombo] = useState<string[]>([]);
+  const [promptBasket, setPromptBasket] = useState<PromptBasket>({});
   const [activeView, setActiveView] = useState<"workbench" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
@@ -90,6 +94,7 @@ export default function Home() {
       setRecipes([]);
     }
     try { setFavorites(JSON.parse(localStorage.getItem("nai-style-favorites") || "[]")); } catch { setFavorites([]); }
+    try { setPromptBasket(JSON.parse(localStorage.getItem("nai-prompt-basket") || "{}")); } catch { setPromptBasket({}); }
   }, []);
 
   useEffect(() => {
@@ -253,16 +258,17 @@ export default function Home() {
     setNotice(`「${name}」Prompt 已复制`);
   };
 
-  const searchDanbooru = async (tag?: string, page = 1) => {
-    if (!booruQuery.trim() && !tag) return;
+  const searchDanbooru = async (tag?: string, page = 1, combined: string[] = []) => {
+    if (!booruQuery.trim() && !tag && !combined.length) return;
     setBooruLoading(true);
     try {
       let data: DanbooruResult;
       if (window.naiDesktop) {
-        data = await window.naiDesktop.searchDanbooru({ q: booruQuery, mode: booruMode, tag, page });
+        data = await window.naiDesktop.searchDanbooru({ q: booruQuery, mode: booruMode, tag, combo: combined, page });
       } else {
         const params = new URLSearchParams({ q: booruQuery, mode: booruMode });
         if (tag) params.set("tag", tag);
+        if (combined.length) params.set("combo", combined.join(","));
         params.set("page", String(page));
         const response = await fetch(`/api/danbooru?${params}`);
         data = await response.json() as DanbooruResult;
@@ -271,6 +277,7 @@ export default function Home() {
       setBooruResult(data);
       setBooruPage(page);
       setBooruPageInput(String(page));
+      setActiveCombo(combined);
       setAutocomplete([]);
       setNotice(data.posts.length ? `已载入第 ${page} 页，共 ${data.posts.length} 张参考图` : "这一页没有参考图");
     } catch (error) {
@@ -282,9 +289,42 @@ export default function Home() {
   };
 
   const totalBooruPages = Math.max(1, Math.ceil((booruResult?.totalCount || 0) / 24));
+  const searchBooruPage = (page: number) => searchDanbooru(activeCombo.length ? undefined : booruResult?.selectedTag || undefined, page, activeCombo);
   const jumpBooruPage = () => {
     const page = Math.max(1, Math.min(totalBooruPages, Number(booruPageInput) || 1));
-    searchDanbooru(booruResult?.selectedTag || undefined, page);
+    searchBooruPage(page);
+  };
+
+  const addBooruFilter = (value?: string) => {
+    const tag = (value || booruResult?.selectedTag || booruQuery).trim().toLowerCase().replace(/\s+/g, "_");
+    if (!tag || tag.includes(" ")) return;
+    setBooruFilters((current) => current.includes(tag) ? current : [...current, tag]);
+    setNotice(`已把 ${tag} 加入组合查询`);
+  };
+
+  const persistPromptBasket = (next: PromptBasket) => {
+    setPromptBasket(next);
+    localStorage.setItem("nai-prompt-basket", JSON.stringify(next));
+  };
+
+  const addToPromptBasket = (label: string, tags: string[]) => {
+    const next = { ...promptBasket, [label]: [...new Set([...(promptBasket[label] || []), ...tags])] };
+    persistPromptBasket(next);
+    setNotice(`已把 ${tags.length} 项${label}标签加入暂存篮`);
+  };
+
+  const clearPromptBasket = () => persistPromptBasket({});
+
+  const basketTagCount = Object.values(promptBasket).reduce((total, tags) => total + tags.length, 0);
+
+  const sendBasketToWorkbench = () => {
+    const basketArtists = (promptBasket["画师"] || []).map((tag) => tag.replace(/_/g, " "));
+    const newArtists = basketArtists.filter((name) => !artists.some((artist) => artist.name.toLowerCase() === name.toLowerCase()));
+    const otherTags = Object.entries(promptBasket).filter(([label]) => label !== "画师" && label !== "元数据").flatMap(([, tags]) => tags).map((tag) => tag.replace(/_/g, " "));
+    setArtists((current) => [...current, ...newArtists.map((name) => ({ id: uid(), name, weight: 1, enabled: true }))]);
+    setSuffix((current) => [...new Set([...current.split(",").map((tag) => tag.trim()).filter(Boolean), ...otherTags])].join(", "));
+    setActiveView("workbench");
+    setNotice(`已把暂存篮中的 ${basketTagCount} 项标签发送到工作台`);
   };
 
   const useDanbooruTag = (tag: string) => {
@@ -429,17 +469,22 @@ export default function Home() {
             <div className="booru-input-wrap"><input value={booruQuery} onChange={(event) => setBooruQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchDanbooru(); }} placeholder={booruMode === "artist" ? "输入画师名，如 honashi" : "输入英文标签，如 cinematic lighting"} />{!!autocomplete.length && <div className="booru-autocomplete">{autocomplete.map((tag) => <button key={tag.name} onMouseDown={(event) => event.preventDefault()} onClick={() => { setBooruQuery(tag.name); searchDanbooru(tag.name, 1); }}><span>{tag.name}</span><small>{tag.count.toLocaleString()} 张</small></button>)}</div>}</div>
             <button className="button primary" disabled={booruLoading} onClick={() => searchDanbooru()}>{booruLoading ? "查询中…" : "查询"}</button>
           </div>
+          <div className="combo-builder">
+            <div><strong>组合查询</strong>{booruFilters.length ? booruFilters.map((tag) => <button className="combo-chip" key={tag} onClick={() => setBooruFilters((current) => current.filter((item) => item !== tag))}>{tag}<span>×</span></button>) : <span>把角色、衣着、动作等标签组合起来查询</span>}</div>
+            <div><button className="button secondary" onClick={() => addBooruFilter()}>＋ 加入当前标签</button><button className="button primary" disabled={!booruFilters.length || booruLoading} onClick={() => searchDanbooru(undefined, 1, booruFilters)}>查询组合</button>{!!booruFilters.length && <button className="text-button" onClick={() => setBooruFilters([])}>清空</button>}</div>
+          </div>
           {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
           {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
           {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={(event) => { keepPostOpen(); showPost(post, false, event.currentTarget); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, 1)}>首页</button><button disabled={booruPage === 1 || booruLoading} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage - 1)}>上一页</button><label>第 <input type="number" min="1" max={totalBooruPages} value={booruPageInput} onChange={(event) => setBooruPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jumpBooruPage(); }} /> / {totalBooruPages} 页</label><button disabled={booruLoading} onClick={jumpBooruPage}>跳转</button><button disabled={booruLoading || booruPage >= totalBooruPages} onClick={() => searchDanbooru(booruResult.selectedTag || undefined, booruPage + 1)}>下一页</button></div></>}
+          <div className="prompt-basket"><div className="basket-heading"><div><strong>提示词暂存篮</strong><span>{basketTagCount ? `${basketTagCount} 项，已在本机保存` : "从作品预览框加入分类标签"}</span></div><div><button disabled={!basketTagCount} onClick={sendBasketToWorkbench}>发送到工作台</button><button disabled={!basketTagCount} onClick={clearPromptBasket}>清空</button></div></div>{!!basketTagCount && <div className="basket-groups">{Object.entries(promptBasket).filter(([, tags]) => tags.length).map(([label, tags]) => <section key={label}><b>{label}</b><div>{tags.map((tag) => <button key={tag} onClick={() => persistPromptBasket({ ...promptBasket, [label]: tags.filter((item) => item !== tag) })}>{tag}<span>×</span></button>)}</div></section>)}</div>}</div>
+          {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={(event) => { keepPostOpen(); showPost(post, false, event.currentTarget); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchBooruPage(1)}>首页</button><button disabled={booruPage === 1 || booruLoading} onClick={() => searchBooruPage(booruPage - 1)}>上一页</button><label>第 <input type="number" min="1" max={totalBooruPages} value={booruPageInput} onChange={(event) => setBooruPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jumpBooruPage(); }} /> / {totalBooruPages} 页</label><button disabled={booruLoading} onClick={jumpBooruPage}>跳转</button><button disabled={booruLoading || booruPage >= totalBooruPages} onClick={() => searchBooruPage(booruPage + 1)}>下一页</button></div></>}
           {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
         </section>
       </section>}
 
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button></header><div>{tags.map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div>{tags.map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

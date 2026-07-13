@@ -81,7 +81,7 @@ export default function Home() {
   const [booruFilters, setBooruFilters] = useState<string[]>([]);
   const [activeCombo, setActiveCombo] = useState<string[]>([]);
   const [promptBasket, setPromptBasket] = useState<PromptBasket>({});
-  const [activeView, setActiveView] = useState<"workbench" | "danbooru" | "favorites">("workbench");
+  const [activeView, setActiveView] = useState<"workbench" | "prompt" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
   const [selectedDetailTags, setSelectedDetailTags] = useState<string[]>([]);
@@ -127,13 +127,14 @@ export default function Home() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [booruQuery, booruMode]);
 
-  const prompt = useMemo(() => {
-    const artistPart = artists
-      .filter((artist) => artist.enabled)
-      .map((artist) => `${formatWeight(artist.weight)}::artist:${artist.name}::`)
-      .join(", ");
-    return [formatPromptSections(promptSections), artistPart, suffix.trim()].filter(Boolean).join(", ");
-  }, [artists, promptSections, suffix]);
+  const artistPrompt = useMemo(() => artists
+    .filter((artist) => artist.enabled)
+    .map((artist) => `${formatWeight(artist.weight)}::artist:${artist.name}::`)
+    .join(", "), [artists]);
+
+  const prompt = useMemo(() =>
+    [formatPromptSections(promptSections), artistPrompt, suffix.trim()].filter(Boolean).join(", "),
+  [artistPrompt, promptSections, suffix]);
 
   const negativePrompt = useMemo(() => formatNegativePrompt(promptSections), [promptSections]);
 
@@ -264,6 +265,11 @@ export default function Home() {
     setNotice("新版 Prompt 已复制");
   };
 
+  const copyArtistPrompt = async () => {
+    await navigator.clipboard.writeText(artistPrompt);
+    setNotice("画师串已复制");
+  };
+
   const applyExperiment = (weights: number[], name: string) => {
     setArtists((current) => current.map((artist, index) => ({ ...artist, weight: weights[index] })));
     setActiveRecipeId(null);
@@ -357,8 +363,8 @@ export default function Home() {
     const newArtists = basketArtists.filter((name) => !artists.some((artist) => artist.name.toLowerCase() === name.toLowerCase()));
     setArtists((current) => [...current, ...newArtists.map((name) => ({ id: uid(), name, weight: 1, enabled: true }))]);
     Object.entries(promptBasket).filter(([label]) => label !== "画师" && label !== "元数据").forEach(([label, tags]) => addTagsToPromptSection(promptSectionForLabel(label), tags));
-    setActiveView("workbench");
-    setNotice(`已把暂存篮中的 ${basketTagCount} 项标签发送到工作台`);
+    setActiveView("prompt");
+    setNotice(`已把暂存篮中的 ${basketTagCount} 项标签发送到提示词编辑器`);
   };
 
   const useDanbooruTag = (tag: string) => {
@@ -370,7 +376,8 @@ export default function Home() {
       setNotice(`已把画师 ${normalized} 加入当前画师串`);
     } else {
       addTagsToPromptSection("other", [tag]);
-      setNotice(`已把提示词 ${readable} 加入通用提示词`);
+      setActiveView("prompt");
+      setNotice(`已把提示词 ${normalized} 加入提示词编辑器`);
     }
   };
 
@@ -437,8 +444,8 @@ export default function Home() {
     addTagsToPromptSection("action", groups.actions);
     if (groups.composition.length) addTagsToPromptSection("composition", groups.composition);
     if ([...groups.adult, ...groups.censorship, ...groups.other].length) addTagsToPromptSection("other", [...groups.adult, ...groups.censorship, ...groups.other]);
-    setActiveView("workbench");
-    setNotice(`已发送作品 #${post.id} 的画师和提示词到工作台`);
+    setActiveView("prompt");
+    setNotice(`已发送作品 #${post.id} 的画师和提示词到提示词编辑器`);
   };
 
   function generalGroups(tags: string[]) {
@@ -522,6 +529,7 @@ export default function Home() {
         </div>
         <nav className="top-nav" aria-label="主功能">
           <button className={activeView === "workbench" ? "active" : ""} onClick={() => setActiveView("workbench")}>画师串工作台</button>
+          <button className={activeView === "prompt" ? "active" : ""} onClick={() => setActiveView("prompt")}>提示词编辑器</button>
           <button className={activeView === "danbooru" ? "active" : ""} onClick={() => setActiveView("danbooru")}>Danbooru 画廊</button>
           <button className={activeView === "favorites" ? "active" : ""} onClick={() => setActiveView("favorites")}>收藏 {favorites.length ? `(${favorites.length})` : ""}</button>
         </nav>
@@ -555,6 +563,25 @@ export default function Home() {
       </section>}
 
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
+
+      {activeView === "prompt" && <section className="prompt-page">
+        <div className="gallery-title"><div><p className="eyebrow">NOVELAI PROMPT EDITOR</p><h2>分区提示词编辑器</h2><p>只添加画面真正需要的内容，最终自动整理为 NovelAI 格式。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>调整画师串</button></div>
+        <div className="prompt-page-grid">
+          <div className="prompt-page-main"><PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} /></div>
+          <aside className="prompt-page-side">
+            <section className="panel artist-context-panel">
+              <div className="panel-heading"><div><span className="step">A</span><h2>当前画师串</h2></div><button className="text-button" onClick={() => setActiveView("workbench")}>编辑</button></div>
+              <div className="artist-context-copy"><strong>{recipeName}</strong><span>{artists.filter((artist) => artist.enabled).length} 位启用画师</span></div>
+              <pre>{artistPrompt || "尚未添加画师，可先只编辑普通提示词。"}</pre>
+            </section>
+            <section className="panel output-panel prompt-final-output">
+              <div className="panel-heading"><div><span className="step">OUT</span><h2>最终 Prompt</h2></div><button className="button primary" disabled={!prompt} onClick={copyPrompt}>复制 Prompt</button></div>
+              <pre>{prompt || "添加标签或画师后，这里会实时生成结果。"}</pre>
+              {negativePrompt && <><div className="negative-label">Undesired Content</div><pre className="negative-output">{negativePrompt}</pre></>}
+            </section>
+          </aside>
+        </div>
+      </section>}
 
       {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setSelectedDetailTags([]); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div><div className="selected-tags-toolbar"><span>已选 {selectedDetailTags.length} 项</span><button disabled={!selectedDetailTags.length} onClick={copySelectedDetailTags}>复制已选</button><button disabled={!selectedDetailTags.length} onClick={() => setSelectedDetailTags([])}>清空选择</button></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div className="tag-list">{tags.map((tag) => <span className={`detail-tag ${selectedDetailTags.includes(tag) ? "selected" : ""}`} key={tag}><button className="tag-copy" title={`单独复制 ${tag}`} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button><button className="tag-select" title={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} aria-label={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} onClick={() => toggleDetailTag(tag)}>✓</button><button className="tag-add" title={`单独暂存 ${tag}`} aria-label={`单独暂存 ${tag}`} onClick={() => addToPromptBasket(label, [tag])}>＋</button></span>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
@@ -620,12 +647,10 @@ export default function Home() {
             <button className="add-artist" onClick={() => setArtists((current) => [...current, { id: uid(), name: "new artist", weight: 1, enabled: true }])}>＋ 手动添加画师</button>
           </section>
 
-          <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} />
-
           <section className="panel output-panel">
-            <div className="panel-heading"><div><span className="step">04</span><h2>生成新版 Prompt</h2></div><button className="button primary" onClick={copyPrompt}>复制 Prompt</button></div>
-            <pre>{prompt || "等待添加画师……"}</pre>
-            {negativePrompt && <><div className="negative-label">Undesired Content</div><pre className="negative-output">{negativePrompt}</pre></>}
+            <div className="panel-heading"><div><span className="step">04</span><h2>画师串输出</h2></div><button className="button primary" disabled={!artistPrompt} onClick={copyArtistPrompt}>复制画师串</button></div>
+            <pre>{artistPrompt || "等待添加画师……"}</pre>
+            <div className="prompt-editor-entry"><span>角色、衣着、动作等普通标签已移至独立页面。</span><button onClick={() => setActiveView("prompt")}>打开提示词编辑器 →</button></div>
           </section>
 
           <section className="panel experiment-panel">

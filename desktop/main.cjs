@@ -41,10 +41,11 @@ const createWindow = () => {
         if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
+        const pageTwo = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", tag: "honashi", page: 2 });
         const thumbnailReady = await new Promise((resolve) => { const image = new Image(); image.onload = () => resolve(true); image.onerror = () => resolve(false); image.src = data.posts[0]?.previewUrl || ""; });
         const character = await window.naiDesktop.searchDanbooru({ q: "mika_(blue_archive)", mode: "tag", page: 1 });
         const combo = await window.naiDesktop.searchDanbooru({ q: "", mode: "tag", combo: ["mika_(blue_archive)", "1girl"], page: 1 });
-        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && pageTwo.selectedTag === "honashi" && pageTwo.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, pageTwoCount: pageTwo.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -60,6 +61,7 @@ const createWindow = () => {
 
 const danbooruSearchCache = new Map();
 const danbooruSuggestionCache = new Map();
+const danbooruTagMetaCache = new Map();
 const getCached = (cache, key, maxAge) => {
   const hit = cache.get(key);
   if (!hit || Date.now() - hit.time > maxAge) { cache.delete(key); return null; }
@@ -71,6 +73,17 @@ const setCached = (cache, key, value, maxEntries = 12) => {
   return value;
 };
 
+const fetchDanbooruResponse = async (url, timeoutMs = 18_000, retry = true) => {
+  try {
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.9.2" }, signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok && response.status >= 500 && retry) return fetchDanbooruResponse(url, 30_000, false);
+    return response;
+  } catch (error) {
+    if (retry) return fetchDanbooruResponse(url, 30_000, false);
+    throw error;
+  }
+};
+
 const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], page = 1 }) => {
   const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
   const comboTags = [...new Set((Array.isArray(combo) ? combo : []).map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
@@ -80,7 +93,6 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
   const cacheKey = `${mode}:${chosen || query}:${normalizedPage}`;
   const cached = getCached(danbooruSearchCache, cacheKey, 2 * 60_000);
   if (cached) return cached;
-  const options = { headers: { "User-Agent": "NAI-Style-Workbench/0.8.4" }, signal: AbortSignal.timeout(25_000) };
   const tagsUrl = new URL("https://danbooru.donmai.us/tags.json");
   tagsUrl.searchParams.set("limit", "8");
   tagsUrl.searchParams.set("search[name_matches]", `${query || chosen}*`);
@@ -92,12 +104,13 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
     earlyPostsUrl.searchParams.set("page", String(normalizedPage));
     earlyPostsUrl.searchParams.set("tags", chosen);
   }
-  const earlyPostsResponse = earlyPostsUrl ? fetch(earlyPostsUrl, options) : null;
-  const tagsResponse = isCombo ? null : await fetch(tagsUrl, options);
+  const earlyPostsResponse = earlyPostsUrl ? fetchDanbooruResponse(earlyPostsUrl) : null;
+  const tagsResponse = isCombo || chosen ? null : await fetchDanbooruResponse(tagsUrl);
   if (tagsResponse && !tagsResponse.ok) throw new Error(`Danbooru 返回 ${tagsResponse.status}`);
   const tags = tagsResponse ? await tagsResponse.json() : [];
   const selectedTag = chosen || tags.find((item) => item.name === query)?.name || tags[0]?.name;
   if (!selectedTag) return { selectedTag: null, suggestions: [], posts: [] };
+  tags.forEach((item) => setCached(danbooruTagMetaCache, item.name, { count: item.post_count }, 120));
 
   const postsUrl = earlyPostsUrl || new URL("https://danbooru.donmai.us/posts.json");
   if (!earlyPostsUrl) {
@@ -105,7 +118,7 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
     postsUrl.searchParams.set("page", String(normalizedPage));
     postsUrl.searchParams.set("tags", selectedTag);
   }
-  const postsResponse = earlyPostsResponse ? await earlyPostsResponse : await fetch(postsUrl, options);
+  const postsResponse = earlyPostsResponse ? await earlyPostsResponse : await fetchDanbooruResponse(postsUrl);
   if (!postsResponse.ok) throw new Error(`Danbooru 返回 ${postsResponse.status}`);
   const posts = await postsResponse.json();
   const visiblePosts = posts.filter((post) => post.preview_file_url);
@@ -121,12 +134,14 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
         metaTags: (post.tag_string_meta || "").split(" ").filter(Boolean).slice(0, 12),
         postUrl: `https://danbooru.donmai.us/posts/${post.id}`,
   }));
-  let totalCount = tags.find((item) => item.name === selectedTag)?.post_count || 0;
+  let totalCount = tags.find((item) => item.name === selectedTag)?.post_count || getCached(danbooruTagMetaCache, selectedTag, 10 * 60_000)?.count || 0;
   if (isCombo) {
     const countUrl = new URL("https://danbooru.donmai.us/counts/posts.json");
     countUrl.searchParams.set("tags", selectedTag);
-    const countResponse = await fetch(countUrl, options);
-    if (countResponse.ok) totalCount = (await countResponse.json()).counts?.posts || 0;
+    try {
+      const countResponse = await fetchDanbooruResponse(countUrl);
+      if (countResponse.ok) totalCount = (await countResponse.json()).counts?.posts || 0;
+    } catch {}
   }
   return setCached(danbooruSearchCache, cacheKey, {
     selectedTag,
@@ -143,7 +158,7 @@ app.whenReady().then(() => {
       const source = new URL(request.url).searchParams.get("url");
       const imageUrl = new URL(String(source));
       if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") return new Response(null, { status: 404 });
-      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.8.4" } });
+      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.9.2" } });
     } catch { return new Response(null, { status: 404 }); }
   });
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));
@@ -158,7 +173,7 @@ app.whenReady().then(() => {
     url.searchParams.set("search[name_matches]", `*${query}*`);
     if (mode !== "tag") url.searchParams.set("search[category]", "1");
     url.searchParams.set("search[order]", "count");
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.8.4" }, signal: AbortSignal.timeout(15_000) });
+    const response = await fetchDanbooruResponse(url, 15_000);
     if (!response.ok) throw new Error(`Danbooru 返回 ${response.status}`);
     const suggestions = (await response.json())
       .sort((left, right) => Number(right.name.startsWith(query)) - Number(left.name.startsWith(query)) || right.post_count - left.post_count)

@@ -18,10 +18,18 @@ type DanbooruPost = {
   tag_string_meta?: string;
 };
 
-const fetchJson = async <T,>(url: URL): Promise<T> => {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(12_000) });
-  if (!response.ok) throw new Error(`Danbooru returned ${response.status}`);
-  return response.json() as Promise<T>;
+const fetchJson = async <T,>(url: URL, retry = true): Promise<T> => {
+  try {
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(retry ? 12_000 : 22_000) });
+    if (!response.ok) {
+      if (response.status >= 500 && retry) return fetchJson<T>(url, false);
+      throw new Error(`Danbooru returned ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (retry) return fetchJson<T>(url, false);
+    throw error;
+  }
 };
 
 const fetchTagSuggestions = async (query: string, mode: "artist" | "tag", limit = 30) => {
@@ -80,7 +88,7 @@ export async function GET(request: NextRequest) {
     const isSuggestion = request.nextUrl.searchParams.get("suggest") === "1";
     if (combo.length) {
       const expression = [...new Set(combo)].join(" ");
-      const [posts, totalCount] = await Promise.all([fetchPosts(expression, page), fetchPostCount(expression)]);
+      const [posts, totalCount] = await Promise.all([fetchPosts(expression, page), fetchPostCount(expression).catch(() => 0)]);
       return NextResponse.json({
         selectedTag: expression,
         totalCount,
@@ -100,7 +108,7 @@ export async function GET(request: NextRequest) {
         })),
       }, { headers: { "Cache-Control": "public, max-age=300" } });
     }
-    const tagsPromise = fetchTagSuggestions(query || chosen, mode, isSuggestion ? 30 : 8);
+    const tagsPromise = chosen && page > 1 ? Promise.resolve([] as DanbooruTag[]) : fetchTagSuggestions(query || chosen, mode, isSuggestion ? 30 : 8);
     if (isSuggestion) {
       const tags = await tagsPromise;
       return NextResponse.json({ suggestions: tags.map((tag) => ({ name: tag.name, count: tag.post_count })) }, { headers: { "Cache-Control": "public, max-age=120" } });

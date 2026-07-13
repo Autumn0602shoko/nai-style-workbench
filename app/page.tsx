@@ -298,14 +298,19 @@ export default function Home() {
         data = await response.json() as DanbooruResult;
         if (!response.ok) throw new Error(data.error || "查询失败");
       }
-      setBooruResult(data);
+      setBooruResult((current) => ({
+        ...data,
+        totalCount: data.totalCount || (current?.selectedTag === data.selectedTag ? current.totalCount : undefined),
+        suggestions: data.suggestions.length ? data.suggestions : current?.suggestions || [],
+      }));
       setBooruPage(page);
       setBooruPageInput(String(page));
       setActiveCombo(combined);
       setAutocomplete([]);
       setNotice(data.posts.length ? `已载入第 ${page} 页，共 ${data.posts.length} 张参考图` : "这一页没有参考图");
     } catch (error) {
-      setBooruResult({ selectedTag: null, suggestions: [], posts: [], error: error instanceof Error ? error.message : "查询失败" });
+      const message = error instanceof Error ? error.message : "查询失败";
+      setBooruResult((current) => current ? { ...current, error: message } : { selectedTag: null, suggestions: [], posts: [], error: message });
       setNotice("Danbooru 查询失败，请稍后重试");
     } finally {
       setBooruLoading(false);

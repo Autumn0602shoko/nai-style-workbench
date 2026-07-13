@@ -79,6 +79,7 @@ export default function Home() {
   const [activeView, setActiveView] = useState<"workbench" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
+  const [selectedDetailTags, setSelectedDetailTags] = useState<string[]>([]);
   const [pinnedPostId, setPinnedPostId] = useState<number | null>(null);
   const [detailImage, setDetailImage] = useState("");
   const [detailPosition, setDetailPosition] = useState({ top: 12, left: 24, maxHeight: 720 });
@@ -368,6 +369,7 @@ export default function Home() {
     const requestId = ++detailRequestId.current;
     if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
     positionPostDetail(anchor);
+    if (focusedPost?.id !== post.id) setSelectedDetailTags([]);
     setFocusedPost(post);
     if (pinned) setPinnedPostId(post.id);
     setDetailImage(post.previewUrl);
@@ -447,17 +449,25 @@ export default function Home() {
     setNotice(`已复制${label}标签，共 ${tags.length} 项`);
   };
 
+  const toggleDetailTag = (tag: string) => setSelectedDetailTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]);
+
+  const copySelectedDetailTags = async () => {
+    if (!selectedDetailTags.length) return;
+    await navigator.clipboard.writeText(selectedDetailTags.join(", "));
+    setNotice(`已复制选中的 ${selectedDetailTags.length} 项标签`);
+  };
+
   const detailTagGroups: [string, string[]][] = focusedPost ? [
     ["画师", focusedPost.artistTags],
     ["角色", focusedPost.characterTags],
     ["作品", focusedPost.copyrightTags],
     ["人物数量", generalGroups(focusedPost.generalTags).subjects],
-    ["人物衣着", generalGroups(focusedPost.generalTags).clothing],
     ["发色", generalGroups(focusedPost.generalTags).hairColor],
     ["眼睛", generalGroups(focusedPost.generalTags).eyes],
+    ["表情", generalGroups(focusedPost.generalTags).expressions],
     ["角色特征", generalGroups(focusedPost.generalTags).features],
     ["身体特征", generalGroups(focusedPost.generalTags).body],
-    ["表情", generalGroups(focusedPost.generalTags).expressions],
+    ["人物衣着", generalGroups(focusedPost.generalTags).clothing],
     ["动作", generalGroups(focusedPost.generalTags).actions],
     ["构图视角", generalGroups(focusedPost.generalTags).composition],
     ["成人内容", generalGroups(focusedPost.generalTags).adult],
@@ -509,7 +519,7 @@ export default function Home() {
 
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div className="tag-list">{tags.map((tag) => <span className="detail-tag" key={tag}><button className="tag-copy" title={`单独复制 ${tag}`} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button><button className="tag-add" title={`单独暂存 ${tag}`} aria-label={`单独暂存 ${tag}`} onClick={() => addToPromptBasket(label, [tag])}>＋</button></span>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setSelectedDetailTags([]); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div><div className="selected-tags-toolbar"><span>已选 {selectedDetailTags.length} 项</span><button disabled={!selectedDetailTags.length} onClick={copySelectedDetailTags}>复制已选</button><button disabled={!selectedDetailTags.length} onClick={() => setSelectedDetailTags([])}>清空选择</button></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div className="tag-list">{tags.map((tag) => <span className={`detail-tag ${selectedDetailTags.includes(tag) ? "selected" : ""}`} key={tag}><button className="tag-copy" title={`单独复制 ${tag}`} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button><button className="tag-select" title={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} aria-label={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} onClick={() => toggleDetailTag(tag)}>✓</button><button className="tag-add" title={`单独暂存 ${tag}`} aria-label={`单独暂存 ${tag}`} onClick={() => addToPromptBasket(label, [tag])}>＋</button></span>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

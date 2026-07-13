@@ -20,10 +20,11 @@ type Recipe = {
 type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[]; characterTags: string[]; copyrightTags: string[]; metaTags: string[] };
 type DanbooruResult = { selectedTag: string | null; totalCount?: number; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
 type PromptBasket = Record<string, string[]>;
+type OnlineTagDictionary = { version: string; updatedAt: string; entries: Record<string, string> };
 
 declare global {
   interface Window {
-    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; combo?: string[]; page?: number }) => Promise<DanbooruResult>; suggestDanbooru: (request: { q: string; mode: "artist" | "tag" }) => Promise<{ name: string; count: number }[]>; loadDanbooruImage: (url: string) => Promise<string> };
+    naiDesktop?: { searchDanbooru: (request: { q: string; mode: "artist" | "tag"; tag?: string; combo?: string[]; page?: number }) => Promise<DanbooruResult>; suggestDanbooru: (request: { q: string; mode: "artist" | "tag" }) => Promise<{ name: string; count: number }[]>; loadDanbooruImage: (url: string) => Promise<string>; loadTagDictionary: () => Promise<OnlineTagDictionary> };
   }
 }
 
@@ -111,6 +112,12 @@ export default function Home() {
     return suggestions;
   }, []);
   const suggestPromptTags = useCallback((query: string) => suggestDanbooruTags(query, "tag"), [suggestDanbooruTags]);
+  const loadOnlineTagDictionary = useCallback(async (): Promise<OnlineTagDictionary> => {
+    if (window.naiDesktop?.loadTagDictionary) return window.naiDesktop.loadTagDictionary();
+    const response = await fetch("/tag-translations.zh-CN.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`公共词典返回 ${response.status}`);
+    return response.json();
+  }, []);
 
   useEffect(() => {
     try {
@@ -618,7 +625,7 @@ export default function Home() {
               <textarea value={promptImportText} onChange={(event) => setPromptImportText(event.target.value)} placeholder="例如：1girl, pink_hair, 1.2::smile::, black_dress, from_above…" />
               <div className="prompt-import-actions"><button className="button primary" disabled={!promptImportText.trim()} onClick={importFullPrompt}>智能分类并加入</button><button className="button secondary" disabled={!promptImportText} onClick={() => setPromptImportText("")}>清空</button></div>
             </section>
-            <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} suggestTags={suggestPromptTags} />
+            <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} suggestTags={suggestPromptTags} loadOnlineDictionary={loadOnlineTagDictionary} />
           </div>
           <aside className="prompt-page-side">
             <section className="panel artist-context-panel">

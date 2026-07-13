@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { movePromptTagToSection } from "./prompt-import";
 import { getBuiltInTranslationCount, normalizeTranslationKey, translateDanbooruTag } from "./tag-translation";
 
@@ -36,9 +36,24 @@ type Props = {
   visibleSections: PromptSectionId[];
   setVisibleSections: Dispatch<SetStateAction<PromptSectionId[]>>;
   suggestTags?: (query: string) => Promise<{ name: string; count: number }[]>;
+  loadOnlineDictionary?: () => Promise<{ version: string; updatedAt: string; entries: Record<string, string> }>;
 };
 
-export function PromptSectionEditor({ sections, setSections, visibleSections, setVisibleSections, suggestTags }: Props) {
+const ONLINE_DICTIONARY_CACHE_KEY = "nai-online-tag-translations";
+const ONLINE_DICTIONARY_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+const normalizeOnlineEntries = (source: unknown) => {
+  if (!source || typeof source !== "object") return {};
+  const result: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(source).slice(0, 20_000)) {
+    const key = normalizeTranslationKey(rawKey);
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (key && key.length <= 120 && value && value.length <= 120) result[key] = value;
+  }
+  return result;
+};
+
+export function PromptSectionEditor({ sections, setSections, visibleSections, setVisibleSections, suggestTags, loadOnlineDictionary }: Props) {
   const [inputs, setInputs] = useState<Partial<Record<PromptSectionId, string>>>({});
   const [addSection, setAddSection] = useState<PromptSectionId>("composition");
   const [activeSuggestionSection, setActiveSuggestionSection] = useState<PromptSectionId | null>(null);
@@ -49,6 +64,10 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [customTranslations, setCustomTranslations] = useState<Record<string, string>>({});
+  const [onlineTranslations, setOnlineTranslations] = useState<Record<string, string>>({});
+  const [onlineDictionaryMeta, setOnlineDictionaryMeta] = useState<{ version: string; updatedAt: string; checkedAt: number } | null>(null);
+  const [dictionaryLoading, setDictionaryLoading] = useState(false);
+  const [dictionaryStatus, setDictionaryStatus] = useState("");
   const [dictionaryTag, setDictionaryTag] = useState("");
   const [dictionaryTranslation, setDictionaryTranslation] = useState("");
   const suggestionRequest = useRef(0);
@@ -58,6 +77,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     return result;
   }, {}), [sections]);
   const allTagIds = useMemo(() => visibleSections.flatMap((id) => sections[id].map((tag) => tag.id)), [sections, visibleSections]);
+  const mergedTranslations = useMemo(() => ({ ...onlineTranslations, ...customTranslations }), [onlineTranslations, customTranslations]);
 
   const updateSection = (id: PromptSectionId, updater: (tags: PromptTag[]) => PromptTag[]) => setSections((current) => ({ ...current, [id]: updater(current[id]) }));
   const addValues = (id: PromptSectionId, values: string[]) => updateSection(id, (current) => {
@@ -116,6 +136,30 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     setActiveSuggestionSection(null);
   };
 
+  const refreshOnlineDictionary = useCallback(async (silent = false) => {
+    if (!loadOnlineDictionary) return;
+    if (!silent) setDictionaryLoading(true);
+    try {
+      const payload = await loadOnlineDictionary();
+      const entries = normalizeOnlineEntries(payload.entries);
+      if (!Object.keys(entries).length) throw new Error("公共词典内容为空");
+      const cached = {
+        version: String(payload.version || "未知版本"),
+        updatedAt: String(payload.updatedAt || ""),
+        checkedAt: Date.now(),
+        entries,
+      };
+      localStorage.setItem(ONLINE_DICTIONARY_CACHE_KEY, JSON.stringify(cached));
+      setOnlineTranslations(entries);
+      setOnlineDictionaryMeta({ version: cached.version, updatedAt: cached.updatedAt, checkedAt: cached.checkedAt });
+      setDictionaryStatus(`已更新到 ${cached.version}`);
+    } catch {
+      setDictionaryStatus("联网更新失败，继续使用本机缓存");
+    } finally {
+      if (!silent) setDictionaryLoading(false);
+    }
+  }, [loadOnlineDictionary]);
+
   useEffect(() => {
     const raw = activeSuggestionSection ? inputs[activeSuggestionSection] || "" : "";
     const query = raw.split(/[,\n]+/).at(-1)?.trim() || "";
@@ -136,6 +180,26 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     try { setCustomTranslations(JSON.parse(localStorage.getItem("nai-tag-translations") || "{}")); }
     catch { setCustomTranslations({}); }
   }, []);
+  useEffect(() => {
+    let shouldRefresh = true;
+    try {
+      const cached = JSON.parse(localStorage.getItem(ONLINE_DICTIONARY_CACHE_KEY) || "null");
+      const entries = normalizeOnlineEntries(cached?.entries);
+      if (Object.keys(entries).length) {
+        const checkedAt = Number(cached.checkedAt || 0);
+        setOnlineTranslations(entries);
+        setOnlineDictionaryMeta({
+          version: String(cached.version || "未知版本"),
+          updatedAt: String(cached.updatedAt || ""),
+          checkedAt,
+        });
+        shouldRefresh = Date.now() - checkedAt > ONLINE_DICTIONARY_MAX_AGE;
+      }
+    } catch {
+      localStorage.removeItem(ONLINE_DICTIONARY_CACHE_KEY);
+    }
+    if (shouldRefresh) void refreshOnlineDictionary(true);
+  }, [refreshOnlineDictionary]);
   const available = promptSectionDefinitions.filter((section) => section.optional && !visibleSections.includes(section.id));
 
   return <section className="panel prompt-editor-panel">
@@ -143,7 +207,8 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     <div className="prompt-editor-note">标签采用流式排列。点击标签可编辑英文、权重与分类；勾选按钮用于临时启用或停用，最终输出仍保持 NovelAI 英文格式。</div>
     {bulkMode && <div className="prompt-bulk-toolbar"><div><strong>批量选择</strong><span>已选 {selectedTagIds.length} / {allTagIds.length} 项</span></div><div><button disabled={!allTagIds.length || selectedTagIds.length === allTagIds.length} onClick={() => setSelectedTagIds(allTagIds)}>全选</button><button disabled={!selectedTagIds.length} onClick={() => setSelectedTagIds([])}>清空选择</button><button className="danger" disabled={!selectedTagIds.length} onClick={deleteSelectedTags}>删除选中</button></div></div>}
     {dictionaryOpen && <div className="prompt-dictionary-panel">
-      <div className="dictionary-heading"><div><strong>本地翻译小词典</strong><span>内置 {getBuiltInTranslationCount()} 条 · 自定义 {Object.keys(customTranslations).length} 条</span></div><button onClick={() => setDictionaryOpen(false)}>收起</button></div>
+      <div className="dictionary-heading"><div><strong>翻译小词典</strong><span>内置 {getBuiltInTranslationCount()} 条 · 公共 {Object.keys(onlineTranslations).length} 条 · 自定义 {Object.keys(customTranslations).length} 条</span></div><button onClick={() => setDictionaryOpen(false)}>收起</button></div>
+      <div className="dictionary-sync"><span>{onlineDictionaryMeta ? `公共词典 ${onlineDictionaryMeta.version}${onlineDictionaryMeta.updatedAt ? ` · ${onlineDictionaryMeta.updatedAt}` : ""}` : "尚未下载公共词典"}</span>{dictionaryStatus && <em>{dictionaryStatus}</em>}<button disabled={dictionaryLoading || !loadOnlineDictionary} onClick={() => void refreshOnlineDictionary(false)}>{dictionaryLoading ? "更新中…" : "联网更新"}</button></div>
       <div className="dictionary-form"><input value={dictionaryTag} onChange={(event) => setDictionaryTag(event.target.value)} placeholder="英文标签，如 halo" /><input value={dictionaryTranslation} onChange={(event) => setDictionaryTranslation(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveCustomTranslation(); }} placeholder="中文释义，如 光环" /><button disabled={!dictionaryTag.trim() || !dictionaryTranslation.trim()} onClick={saveCustomTranslation}>保存翻译</button></div>
       {!!Object.keys(customTranslations).length && <div className="dictionary-entries">{Object.entries(customTranslations).map(([tag, translation]) => <span key={tag}><b>{tag}</b><em>{translation}</em><button aria-label={`删除 ${tag} 的翻译`} onClick={() => { const next = { ...customTranslations }; delete next[tag]; persistCustomTranslations(next); }}>×</button></span>)}</div>}
     </div>}
@@ -156,7 +221,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
         <div className="prompt-tag-input"><input value={inputs[id] || ""} onFocus={() => setActiveSuggestionSection(id)} onBlur={() => setTimeout(() => setActiveSuggestionSection((current) => current === id ? null : current), 120)} onChange={(event) => { setInputs((current) => ({ ...current, [id]: event.target.value })); setActiveSuggestionSection(id); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addInputTags(id); } }} placeholder={`添加${definition.label}标签…`} /><button onClick={() => addInputTags(id)}>添加</button></div>
         {activeSuggestionSection === id && !!tagSuggestions.length && <div className="prompt-tag-suggestions">{tagSuggestions.map((suggestion) => <button key={suggestion.name} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSuggestedTag(id, suggestion.name)}><span>{suggestion.name}</span><small>{suggestion.count.toLocaleString()} 张</small></button>)}</div>}
         {!sections[id].length ? <div className="prompt-section-empty">暂时留空，不会向最终 Prompt 添加任何内容。</div> : <div className="prompt-tag-cloud">{sections[id].map((tag) => {
-          const translation = showTranslations ? translateDanbooruTag(tag.text, customTranslations) : null;
+          const translation = showTranslations ? translateDanbooruTag(tag.text, mergedTranslations) : null;
           return <div className={`prompt-chip ${tag.enabled ? "" : "disabled"} ${selectedTagId === tag.id ? "selected" : ""} ${selectedTagIds.includes(tag.id) ? "bulk-selected" : ""} ${counts[tag.text.trim().toLowerCase()] > 1 ? "duplicate" : ""}`} key={tag.id}>
             <button className="prompt-chip-toggle" title={tag.enabled ? "停用标签" : "启用标签"} onClick={() => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, enabled: !item.enabled } : item))}>{tag.enabled ? "✓" : "–"}</button>
             <button className="prompt-chip-main" onClick={() => bulkMode ? toggleBulkTag(tag.id) : setSelectedTagId((current) => current === tag.id ? null : tag.id)}><span>{tag.text}</span>{translation ? <small>{translation}</small> : showTranslations ? <small className="translation-missing">待补充</small> : null}{tag.weight !== 1 && <b>{Number(tag.weight.toFixed(2))}</b>}</button>
@@ -164,7 +229,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
           </div>;
         })}</div>}
         {selectedTag && !bulkMode && <div className="prompt-tag-inspector">
-          <div className="prompt-inspector-title"><strong>编辑标签</strong><span>{showTranslations ? translateDanbooruTag(selectedTag.text, customTranslations) || "暂无本地翻译" : "英文标签将用于最终输出"}</span>{showTranslations && !translateDanbooruTag(selectedTag.text, customTranslations) && <button onClick={() => { setDictionaryOpen(true); setDictionaryTag(selectedTag.text); }}>添加翻译</button>}<button onClick={() => setSelectedTagId(null)}>收起</button></div>
+          <div className="prompt-inspector-title"><strong>编辑标签</strong><span>{showTranslations ? translateDanbooruTag(selectedTag.text, mergedTranslations) || "暂无本地翻译" : "英文标签将用于最终输出"}</span>{showTranslations && !translateDanbooruTag(selectedTag.text, mergedTranslations) && <button onClick={() => { setDictionaryOpen(true); setDictionaryTag(selectedTag.text); }}>添加翻译</button>}<button onClick={() => setSelectedTagId(null)}>收起</button></div>
           <div className="prompt-inspector-fields">
             <input aria-label="英文提示词" value={selectedTag.text} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === selectedTag.id ? { ...item, text: event.target.value } : item))} />
             <select value={id} aria-label={`移动 ${selectedTag.text} 到分类`} onChange={(event) => changeTagSection(id, event.target.value as PromptSectionId, selectedTag.id)}>{promptSectionDefinitions.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select>

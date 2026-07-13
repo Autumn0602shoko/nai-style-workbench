@@ -1,5 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, net, protocol, shell } = require("electron");
 const path = require("node:path");
+
+protocol.registerSchemesAsPrivileged([{ scheme: "nai-image", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
+
+const proxiedImageUrl = (value) => `nai-image://cdn/load?url=${encodeURIComponent(value)}`;
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -37,9 +41,10 @@ const createWindow = () => {
         if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", page: 1 });
+        const thumbnailReady = await new Promise((resolve) => { const image = new Image(); image.onload = () => resolve(true); image.onerror = () => resolve(false); image.src = data.posts[0]?.previewUrl || ""; });
         const character = await window.naiDesktop.searchDanbooru({ q: "mika_(blue_archive)", mode: "tag", page: 1 });
         const combo = await window.naiDesktop.searchDanbooru({ q: "", mode: "tag", combo: ["mika_(blue_archive)", "1girl"], page: 1 });
-        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("data:image/")) && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -75,7 +80,7 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
   const cacheKey = `${mode}:${chosen || query}:${normalizedPage}`;
   const cached = getCached(danbooruSearchCache, cacheKey, 2 * 60_000);
   if (cached) return cached;
-  const options = { headers: { "User-Agent": "NAI-Style-Workbench/0.3" }, signal: AbortSignal.timeout(12_000) };
+  const options = { headers: { "User-Agent": "NAI-Style-Workbench/0.8.4" }, signal: AbortSignal.timeout(25_000) };
   const tagsUrl = new URL("https://danbooru.donmai.us/tags.json");
   tagsUrl.searchParams.set("limit", "8");
   tagsUrl.searchParams.set("search[name_matches]", `${query || chosen}*`);
@@ -104,16 +109,10 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
   if (!postsResponse.ok) throw new Error(`Danbooru 返回 ${postsResponse.status}`);
   const posts = await postsResponse.json();
   const visiblePosts = posts.filter((post) => post.preview_file_url);
-  const mappedPosts = await Promise.all(visiblePosts.map(async (post) => {
-    try {
-      const imageResponse = await fetch(post.preview_file_url, { headers: options.headers, signal: AbortSignal.timeout(20_000) });
-      if (!imageResponse.ok) return null;
-      const type = imageResponse.headers.get("content-type") || "image/jpeg";
-      const bytes = Buffer.from(await imageResponse.arrayBuffer());
-      return {
+  const mappedPosts = visiblePosts.map((post) => ({
         id: post.id,
         rating: post.rating,
-        previewUrl: `data:${type};base64,${bytes.toString("base64")}`,
+        previewUrl: proxiedImageUrl(post.preview_file_url),
         imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
         artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
         generalTags: (post.tag_string_general || "").split(" ").filter(Boolean),
@@ -121,8 +120,6 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
         copyrightTags: (post.tag_string_copyright || "").split(" ").filter(Boolean),
         metaTags: (post.tag_string_meta || "").split(" ").filter(Boolean).slice(0, 12),
         postUrl: `https://danbooru.donmai.us/posts/${post.id}`,
-      };
-    } catch { return null; }
   }));
   let totalCount = tags.find((item) => item.name === selectedTag)?.post_count || 0;
   if (isCombo) {
@@ -135,12 +132,20 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
     selectedTag,
     totalCount,
     suggestions: tags.map((item) => ({ name: item.name, count: item.post_count })),
-    posts: mappedPosts.filter(Boolean),
+    posts: mappedPosts,
   });
 };
 
 app.whenReady().then(() => {
   app.setAppUserModelId("com.nai.styleworkbench");
+  protocol.handle("nai-image", async (request) => {
+    try {
+      const source = new URL(request.url).searchParams.get("url");
+      const imageUrl = new URL(String(source));
+      if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") return new Response(null, { status: 404 });
+      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.8.4" } });
+    } catch { return new Response(null, { status: 404 }); }
+  });
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));
   ipcMain.handle("danbooru:suggest", async (_event, { q = "", mode = "artist" }) => {
     const query = String(q).trim().toLowerCase().replace(/\s+/g, "_");
@@ -153,7 +158,7 @@ app.whenReady().then(() => {
     url.searchParams.set("search[name_matches]", `*${query}*`);
     if (mode !== "tag") url.searchParams.set("search[category]", "1");
     url.searchParams.set("search[order]", "count");
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.6.1" }, signal: AbortSignal.timeout(8_000) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.8.4" }, signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`Danbooru 返回 ${response.status}`);
     const suggestions = (await response.json())
       .sort((left, right) => Number(right.name.startsWith(query)) - Number(left.name.startsWith(query)) || right.post_count - left.post_count)

@@ -116,7 +116,7 @@ const fetchDanbooru = async ({ q = "", mode = "artist", tag = "", combo = [], pa
         previewUrl: `data:${type};base64,${bytes.toString("base64")}`,
         imageUrl: post.large_file_url || post.file_url || post.preview_file_url,
         artistTags: (post.tag_string_artist || "").split(" ").filter(Boolean),
-        generalTags: (post.tag_string_general || "").split(" ").filter(Boolean).slice(0, 18),
+        generalTags: (post.tag_string_general || "").split(" ").filter(Boolean),
         characterTags: (post.tag_string_character || "").split(" ").filter(Boolean),
         copyrightTags: (post.tag_string_copyright || "").split(" ").filter(Boolean),
         metaTags: (post.tag_string_meta || "").split(" ").filter(Boolean).slice(0, 12),

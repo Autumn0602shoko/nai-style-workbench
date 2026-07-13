@@ -403,23 +403,42 @@ export default function Home() {
   };
 
   const generalGroups = (tags: string[]) => {
-    const clothingWords = /dress|shirt|skirt|pants|shorts|uniform|jacket|coat|sleeve|shoes|boots|hat|gloves|swimsuit|bikini|lingerie|clothes|hoodie|kimono|armor|stockings|pantyhose|bra|necktie|ribbon|collar|apron|robe|sweater|cardigan|socks|footwear/;
-    const actionWords = /sitting|standing|walking|running|lying|looking|holding|smile|smiling|fighting|dancing|jumping|kneeling|pose|reaching|sleeping|eating|drinking/;
+    const subjectWords = /^(?:solo|1girl|1boy|2girls|2boys|3girls|3boys|4girls|4boys|multiple_girls|multiple_boys|male_focus|female_focus)$/;
+    const clothingWords = /dress|shirt|skirt|pants|shorts|uniform|jacket|coat|sleeve|shoes|boots|hat|gloves|swimsuit|bikini|lingerie|clothes|hoodie|kimono|armor|stockings|thighhighs|pantyhose|bra|necktie|ribbon|collar|choker|apron|robe|sweater|cardigan|socks|footwear|bare_shoulders|off_shoulder|cleavage|navel|midriff/;
+    const censorWords = /^(?:censored|uncensored|mosaic_censoring|bar_censor|blank_censor|blur_censor|convenient_censoring|light_censor|identity_censor|fake_censor|partially_censored)$/;
+    const adultWords = /anal|fellatio|cum|sex|masturbation|butt_plug|dildo|vibrator|penetration|paizuri|handjob|footjob|oral|orgasm|ejaculation|nipple_stimulation|bondage|tentacle|groping/;
+    const expressionWords = /blush|smile|smiling|grin|open_mouth|closed_mouth|frown|crying|tears|angry|surprised|embarrassed|expressionless|tongue|winking/;
+    const actionWords = /sitting|standing|walking|running|lying|looking|holding|fighting|dancing|jumping|kneeling|pose|reaching|sleeping|eating|drinking|grabbing|pulling|hugging|kissing|arms_|hand_on|hands_on|head_tilt/;
+    const compositionWords = /focus|foreshortening|perspective|view|angle|close-up|upper_body|lower_body|full_body|cowboy_shot|portrait|from_above|from_below|dutch_angle|depth_of_field|cropped|out_of_frame/;
     const hairColorWords = /(?:black|brown|blonde|yellow|red|orange|green|blue|purple|pink|white|grey|gray|silver|aqua|multicolored|two-tone)_hair/;
     const eyeWords = /(?:black|brown|yellow|red|orange|green|blue|purple|pink|white|grey|gray|aqua|heterochromia)_eyes|closed_eyes|one_eye_closed/;
-    const featureWords = /long_hair|short_hair|medium_hair|very_long_hair|twintails|ponytail|braid|bangs|ahoge|hair_ornament|animal_ears|cat_ears|fox_ears|dog_ears|horns|tail|wings|fang|freckles|mole|dark_skin|pale_skin|tan|muscular|petite|curvy|breasts|glasses/;
+    const featureWords = /long_hair|short_hair|medium_hair|very_long_hair|twintails|ponytail|braid|bangs|ahoge|hair_between_eyes|hair_ornament|bald|animal_ears|cat_ears|fox_ears|dog_ears|horns|tail|wings|fang|freckles|mole|dark_skin|dark-skinned|dark_skinned|pale_skin|tan|muscular|petite|curvy|glasses/;
+    const bodyWords = /^(?:ass|anus|feet|foot|breasts|large_breasts|medium_breasts|small_breasts|flat_chest|nipples|navel|thighs|legs|armpits|back|stomach|penis|pussy)$/;
+    const subjects = tags.filter((tag) => subjectWords.test(tag));
     const clothing = tags.filter((tag) => clothingWords.test(tag));
+    const censorship = tags.filter((tag) => censorWords.test(tag));
+    const adult = tags.filter((tag) => adultWords.test(tag) && !censorWords.test(tag));
     const hairColor = tags.filter((tag) => hairColorWords.test(tag));
     const eyes = tags.filter((tag) => eyeWords.test(tag));
     const features = tags.filter((tag) => featureWords.test(tag) && !hairColorWords.test(tag) && !eyeWords.test(tag));
-    const actions = tags.filter((tag) => actionWords.test(tag));
+    const body = tags.filter((tag) => bodyWords.test(tag));
+    const expressions = tags.filter((tag) => expressionWords.test(tag) && !eyeWords.test(tag));
+    const actions = tags.filter((tag) => actionWords.test(tag) && !adultWords.test(tag));
+    const composition = tags.filter((tag) => compositionWords.test(tag) && !clothingWords.test(tag));
+    const ordered = [subjects, clothing, hairColor, eyes, features, body, expressions, actions, composition, adult, censorship];
     return {
+      subjects,
       clothing,
       hairColor,
       eyes,
       features,
+      body,
+      expressions,
       actions,
-      other: tags.filter((tag) => ![clothing, hairColor, eyes, features, actions].some((group) => group.includes(tag))),
+      composition,
+      adult,
+      censorship,
+      other: tags.filter((tag) => !ordered.some((group) => group.includes(tag))),
     };
   };
 
@@ -432,11 +451,17 @@ export default function Home() {
     ["画师", focusedPost.artistTags],
     ["角色", focusedPost.characterTags],
     ["作品", focusedPost.copyrightTags],
+    ["人物数量", generalGroups(focusedPost.generalTags).subjects],
     ["人物衣着", generalGroups(focusedPost.generalTags).clothing],
     ["发色", generalGroups(focusedPost.generalTags).hairColor],
     ["眼睛", generalGroups(focusedPost.generalTags).eyes],
     ["角色特征", generalGroups(focusedPost.generalTags).features],
+    ["身体特征", generalGroups(focusedPost.generalTags).body],
+    ["表情", generalGroups(focusedPost.generalTags).expressions],
     ["动作", generalGroups(focusedPost.generalTags).actions],
+    ["构图视角", generalGroups(focusedPost.generalTags).composition],
+    ["成人内容", generalGroups(focusedPost.generalTags).adult],
+    ["分级与审查", generalGroups(focusedPost.generalTags).censorship],
     ["其他提示词", generalGroups(focusedPost.generalTags).other],
     ["元数据", focusedPost.metaTags],
   ] : [];
@@ -484,7 +509,7 @@ export default function Home() {
 
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div>{tags.map((tag) => <button key={tag} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div className="tag-list">{tags.map((tag) => <span className="detail-tag" key={tag}><button className="tag-copy" title={`单独复制 ${tag}`} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button><button className="tag-add" title={`单独暂存 ${tag}`} aria-label={`单独暂存 ${tag}`} onClick={() => addToPromptBasket(label, [tag])}>＋</button></span>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

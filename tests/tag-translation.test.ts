@@ -14,3 +14,8 @@ test("composes colors and common features", () => {
   assert.equal(translateDanbooruTag("white_dress"), "白色连衣裙");
   assert.equal(translateDanbooruTag("unknown_rare_tag"), null);
 });
+
+test("prefers user dictionary translations", () => {
+  assert.equal(translateDanbooruTag("halo", { halo: "光环" }), "光环");
+  assert.equal(translateDanbooruTag("white_hair", { "white hair": "银白发" }), "银白发");
+});

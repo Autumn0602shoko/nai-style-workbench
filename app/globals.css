@@ -192,6 +192,7 @@ main { min-height:100vh; padding-bottom:64px; }
 .prompt-tag-cloud { display:flex; flex-wrap:wrap; gap:7px; padding:11px; }
 .prompt-chip { display:inline-flex; max-width:100%; overflow:hidden; border:1px solid #cfd7e6; border-radius:8px; background:#f7f9fd; box-shadow:0 1px 2px #1e2c4810; }
 .prompt-chip.selected { border-color:#6d83c8; box-shadow:0 0 0 2px #dfe6fa; }
+.prompt-chip.bulk-selected { border-color:#cd754c; background:#fff4ec; box-shadow:0 0 0 2px #ffe2d2; }
 .prompt-chip.disabled { opacity:.45; background:#f2f2f4; }
 .prompt-chip.duplicate { border-color:#dda866; background:#fff8ed; }
 .prompt-chip button { border:0; background:none; }
@@ -200,6 +201,31 @@ main { min-height:100vh; padding-bottom:64px; }
 .prompt-chip-main span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .prompt-chip-main small { color:#8a7692; font-size:9px; white-space:nowrap; }
 .prompt-chip-main b { padding:2px 5px; border-radius:4px; background:#e9eef9; color:#4a62a3; font:8px Consolas,monospace; }
+.prompt-chip-delete { width:27px; flex:0 0 27px; border-left:1px solid #e0dce5!important; color:#b26d6d; font-size:14px; }
+.prompt-chip-delete:hover { background:#fff0f0!important; color:#bd3f3f; }
+.prompt-bulk-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 14px; border-bottom:1px solid #ead8cc; background:#fff8f2; }
+.prompt-bulk-toolbar>div { display:flex; align-items:center; gap:9px; }
+.prompt-bulk-toolbar strong { color:#774f3a; font-size:11px; }
+.prompt-bulk-toolbar span { color:#a47f6d; font-size:9px; }
+.prompt-bulk-toolbar button { min-height:29px; padding:0 9px; border:1px solid #dbc9bd; border-radius:6px; background:#fff; color:#795e50; font-size:9px; font-weight:800; }
+.prompt-bulk-toolbar button.danger { border-color:#e1aaa0; color:#a54f45; }
+.prompt-bulk-toolbar button:disabled { opacity:.35; }
+.prompt-dictionary-panel { padding:12px 14px; border-bottom:1px solid #ddd5e5; background:#fbf8ff; }
+.dictionary-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:9px; }
+.dictionary-heading>div { display:flex; align-items:baseline; gap:9px; }
+.dictionary-heading strong { color:#594a6a; font-size:11px; }
+.dictionary-heading span { color:#9589a0; font-size:9px; }
+.dictionary-heading>button { border:0; background:none; color:#847391; font-size:9px; font-weight:800; }
+.dictionary-form { display:grid; grid-template-columns:1fr 1fr auto; gap:7px; }
+.dictionary-form input { min-width:0; min-height:34px; padding:0 9px; border:1px solid #d8d1e1; border-radius:6px; color:#3d4657; }
+.dictionary-form button { padding:0 11px; border:1px solid #bbaecb; border-radius:6px; background:#f0eafd; color:#654b87; font-size:9px; font-weight:800; }
+.dictionary-form button:disabled { opacity:.35; }
+.dictionary-entries { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.dictionary-entries span { display:inline-flex; align-items:center; overflow:hidden; border:1px solid #d7d0df; border-radius:6px; background:#fff; }
+.dictionary-entries b,.dictionary-entries em { padding:5px 7px; font-size:9px; font-style:normal; }
+.dictionary-entries b { color:#4f5a70; }
+.dictionary-entries em { border-left:1px solid #ebe7ef; color:#8a688b; }
+.dictionary-entries button { align-self:stretch; width:25px; border:0; border-left:1px solid #ebe7ef; background:none; color:#ae6565; }
 .prompt-tag-inspector { border-top:1px solid #e3e0ea; background:#faf9fd; }
 .prompt-inspector-title { display:flex; align-items:center; gap:9px; padding:8px 11px 0; }
 .prompt-inspector-title strong { color:#4a5265; font-size:10px; }
@@ -260,4 +286,4 @@ main { min-height:100vh; padding-bottom:64px; }
 @media (max-width:980px) { .topbar { grid-template-columns:1fr auto; } .top-nav { grid-column:1/-1; grid-row:2; width:100%; min-height:54px; overflow-x:auto; } .top-nav button { flex:1; } .workspace,.prompt-page-grid { grid-template-columns:1fr; } .prompt-page-side { position:static; } .recipe-grid { grid-template-columns:1fr 1fr; } .gallery-page .booru-grid,.favorite-grid { grid-template-columns:repeat(5,1fr); } .post-detail { grid-template-columns:1fr 320px; } }
 @media (max-width:650px) { .topbar { grid-template-columns:1fr; align-items:flex-start; } .top-nav { grid-column:1; grid-row:auto; width:100%; overflow-x:auto; } .top-nav button { flex:1; min-height:44px; min-width:110px; } .top-actions { width:100%; justify-self:start; flex-wrap:wrap; } .status { width:100%; max-width:none; text-align:left; } .workspace,.library,.gallery-page,.prompt-page { width:calc(100vw - 24px); } .gallery-title { align-items:flex-start; flex-direction:column; } .artist-row { grid-template-columns:28px 25px 1fr 66px 30px 46px 26px; } .artist-main { grid-template-columns:1fr; } .artist-links { display:none; } .recipe-name-row,.suffix-label { grid-template-columns:1fr; flex-direction:column; } .recipe-name-row label { width:100%; grid-template-columns:1fr; } .booru-search { grid-template-columns:74px 1fr; } .booru-search .button { grid-column:1/-1; } .gallery-page .booru-grid,.favorite-grid { grid-template-columns:repeat(3,1fr); } .post-detail { grid-template-columns:1fr; grid-template-rows:minmax(220px,42vh) minmax(0,1fr); width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:hidden; } .detail-image { min-height:0; } .experiment-grid,.recipe-grid { grid-template-columns:1fr; } .prompt-editor-entry { align-items:flex-start; flex-direction:column; } }
 @media (max-width:650px) { .combo-builder,.basket-heading { align-items:flex-start; flex-direction:column; } .basket-groups section { grid-template-columns:1fr; } }
-@media (max-width:650px) { .prompt-inspector-fields { grid-template-columns:1fr 1fr; } .prompt-inspector-fields>input { grid-column:1/-1; } .prompt-chip-main small { display:none; } }
+@media (max-width:650px) { .prompt-inspector-fields { grid-template-columns:1fr 1fr; } .prompt-inspector-fields>input { grid-column:1/-1; } .prompt-chip-main small { display:none; } .prompt-bulk-toolbar,.dictionary-heading { align-items:flex-start; flex-direction:column; } .dictionary-form { grid-template-columns:1fr; width:100%; } .prompt-heading-actions { flex-wrap:wrap; justify-content:flex-end; } }

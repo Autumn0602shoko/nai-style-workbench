@@ -40,10 +40,14 @@ const tokenTranslations: Record<string, string> = {
   indoors: "室内", outdoors: "室外", city: "城市", street: "街道", room: "房间", beach: "海滩", forest: "森林", night: "夜晚", sunset: "日落",
 };
 
+export const normalizeTranslationKey = (value: string) => value.trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+export const getBuiltInTranslationCount = () => Object.keys(exactTranslations).length + Object.keys(tokenTranslations).length;
+
 /** Translate common Danbooru tags locally while keeping the original English tag untouched. */
-export function translateDanbooruTag(value: string): string | null {
-  const normalized = value.trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");
+export function translateDanbooruTag(value: string, customTranslations: Record<string, string> = {}): string | null {
+  const normalized = normalizeTranslationKey(value);
   if (!normalized) return null;
+  if (customTranslations[normalized]?.trim()) return customTranslations[normalized].trim();
   if (exactTranslations[normalized]) return exactTranslations[normalized];
   const tokens = normalized.split(" ");
   if (tokens.every((token) => tokenTranslations[token])) return tokens.map((token) => tokenTranslations[token]).join("");

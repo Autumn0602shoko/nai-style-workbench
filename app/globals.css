@@ -152,6 +152,35 @@ main { min-height:100vh; padding-bottom:64px; }
 .artist-order button:disabled { opacity:.25; cursor:default; }
 .remove { border:0; background:none; color:#a5adba; font-size:20px; }
 .add-artist { width:100%; min-height:46px; border:0; background:#fafbfc; color:var(--blue); font-weight:800; }
+.prompt-editor-panel { border-top:3px solid #7b67b7; }
+.prompt-editor-note { padding:11px 16px; border-bottom:1px solid var(--line); background:#faf8ff; color:#6f6783; font-size:11px; line-height:1.55; }
+.prompt-section-list { display:grid; gap:10px; padding:14px; }
+.prompt-section-card { overflow:hidden; border:1px solid #e0deea; border-radius:9px; background:#fff; }
+.prompt-section-card>header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:#faf9fd; }
+.prompt-section-card h3 { margin:0 0 2px; color:#3f4655; font-size:12px; }
+.prompt-section-card p { margin:0; color:#8a8795; font-size:9px; }
+.prompt-section-card>header>button { border:0; background:none; color:#8a779f; font-size:9px; font-weight:800; }
+.prompt-tag-input { display:grid; grid-template-columns:1fr auto; gap:6px; padding:9px 10px; border-top:1px solid #eeecf3; border-bottom:1px solid #eeecf3; }
+.prompt-tag-input input { min-width:0; min-height:34px; padding:0 9px; border:1px solid #d9d6e3; border-radius:6px; color:var(--ink); }
+.prompt-tag-input button,.add-prompt-section button { padding:0 10px; border:1px solid #c8bde0; border-radius:6px; background:#f5f1ff; color:#644b98; font-size:10px; font-weight:800; }
+.prompt-section-empty { padding:12px; color:#a09baa; font-size:10px; text-align:center; }
+.editable-tag-list { display:grid; }
+.editable-tag-list>div { position:relative; display:grid; grid-template-columns:28px minmax(120px,1fr) 92px 27px 27px 27px; gap:5px; align-items:center; padding:7px 9px; border-bottom:1px solid #f0eef4; }
+.editable-tag-list>div:last-child { border-bottom:0; }
+.editable-tag-list>div.disabled { opacity:.45; background:#f5f5f7; }
+.editable-tag-list>div.duplicate { background:#fff8ed; }
+.editable-tag-list input { min-width:0; min-height:30px; padding:0 7px; border:1px solid #dedbe5; border-radius:5px; color:#39445a; }
+.editable-tag-list label { display:grid; grid-template-columns:auto 52px; align-items:center; gap:4px; color:#8b8793; font-size:9px; }
+.editable-tag-list label input { width:52px; }
+.editable-tag-list button { height:28px; padding:0; border:1px solid #dedbe5; border-radius:5px; background:#fff; color:#727b8d; }
+.editable-tag-list button:disabled { opacity:.3; }
+.editable-tag-list .prompt-tag-toggle { border-color:#b9c8e1; background:#edf3ff; color:#315cbe; font-weight:900; }
+.editable-tag-list .prompt-tag-remove { color:#a55c58; }
+.editable-tag-list small { position:absolute; right:9px; bottom:1px; color:#b87536; font-size:8px; }
+.add-prompt-section { display:flex; gap:7px; padding:0 14px 14px; }
+.add-prompt-section select { flex:1; min-height:34px; padding:0 8px; border:1px solid #d9d6e3; border-radius:6px; background:#fff; color:#505a6e; }
+.negative-label { padding:0 16px 6px; color:#9a5858; font-size:10px; font-weight:900; }
+.output-panel .negative-output { margin-top:0; background:#342027; color:#ffdce2; }
 .empty-state { padding:48px 20px; color:var(--muted); text-align:center; font-size:13px; }
 .output-panel { border-top:3px solid var(--blue); }
 .suffix-label { display:grid; grid-template-columns:130px 1fr; align-items:center; gap:10px; padding:14px 16px 0; color:var(--muted); font-size:12px; font-weight:700; }
@@ -196,3 +225,4 @@ main { min-height:100vh; padding-bottom:64px; }
 @media (max-width:980px) { .topbar { grid-template-columns:1fr auto; } .top-nav { grid-column:1/-1; grid-row:2; width:100%; min-height:54px; } .top-nav button { flex:1; } .workspace { grid-template-columns:1fr; } .recipe-grid { grid-template-columns:1fr 1fr; } .gallery-page .booru-grid,.favorite-grid { grid-template-columns:repeat(5,1fr); } .post-detail { grid-template-columns:1fr 320px; } }
 @media (max-width:650px) { .topbar { grid-template-columns:1fr; align-items:flex-start; } .top-nav { grid-column:1; grid-row:auto; width:100%; overflow-x:auto; } .top-nav button { flex:1; min-height:44px; min-width:110px; } .top-actions { width:100%; justify-self:start; flex-wrap:wrap; } .status { width:100%; max-width:none; text-align:left; } .workspace,.library,.gallery-page { width:calc(100vw - 24px); } .gallery-title { align-items:flex-start; flex-direction:column; } .artist-row { grid-template-columns:28px 25px 1fr 66px 30px 46px 26px; } .artist-main { grid-template-columns:1fr; } .artist-links { display:none; } .recipe-name-row,.suffix-label { grid-template-columns:1fr; flex-direction:column; } .recipe-name-row label { width:100%; grid-template-columns:1fr; } .booru-search { grid-template-columns:74px 1fr; } .booru-search .button { grid-column:1/-1; } .gallery-page .booru-grid,.favorite-grid { grid-template-columns:repeat(3,1fr); } .post-detail { grid-template-columns:1fr; grid-template-rows:minmax(220px,42vh) minmax(0,1fr); width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:hidden; } .detail-image { min-height:0; } .experiment-grid,.recipe-grid { grid-template-columns:1fr; } }
 @media (max-width:650px) { .combo-builder,.basket-heading { align-items:flex-start; flex-direction:column; } .basket-groups section { grid-template-columns:1fr; } }
+@media (max-width:650px) { .editable-tag-list>div { grid-template-columns:28px minmax(100px,1fr) 82px 27px 27px 27px; overflow-x:auto; } }

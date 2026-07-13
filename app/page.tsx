@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { parseArtistTags } from "./artist-parser";
+import { basicPromptSections, createEmptyPromptSections, createPromptTags, formatNegativePrompt, formatPromptSections, PromptSectionEditor, PromptSectionId, PromptSections } from "./prompt-section-editor";
 import { createWeightExperiments } from "./weight-experiments";
 
 type Artist = { id: string; name: string; weight: number; enabled: boolean; locked?: boolean };
@@ -10,6 +11,8 @@ type Recipe = {
   name: string;
   artists: Artist[];
   suffix: string;
+  promptSections?: PromptSections;
+  visiblePromptSections?: PromptSectionId[];
   images: string[];
   createdAt: number;
 };
@@ -59,7 +62,9 @@ export default function Home() {
   const [raw, setRaw] = useState(sample);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [recipeName, setRecipeName] = useState("未命名画师串");
-  const [suffix, setSuffix] = useState("year 2024, year 2025, full color, natural colors");
+  const [suffix, setSuffix] = useState("");
+  const [promptSections, setPromptSections] = useState<PromptSections>(createEmptyPromptSections);
+  const [visiblePromptSections, setVisiblePromptSections] = useState<PromptSectionId[]>(basicPromptSections);
   const [images, setImages] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [notice, setNotice] = useState("");
@@ -127,8 +132,10 @@ export default function Home() {
       .filter((artist) => artist.enabled)
       .map((artist) => `${formatWeight(artist.weight)}::artist:${artist.name}::`)
       .join(", ");
-    return [artistPart, suffix.trim()].filter(Boolean).join(", ");
-  }, [artists, suffix]);
+    return [formatPromptSections(promptSections), artistPart, suffix.trim()].filter(Boolean).join(", ");
+  }, [artists, promptSections, suffix]);
+
+  const negativePrompt = useMemo(() => formatNegativePrompt(promptSections), [promptSections]);
 
   const experiments = useMemo(
     () => createWeightExperiments(artists, experimentAmplitude),
@@ -140,7 +147,7 @@ export default function Home() {
       .filter((artist) => artist.enabled)
       .map((artist) => `${formatWeight(weights[artists.indexOf(artist)])}::artist:${artist.name}::`)
       .join(", ");
-    return [artistPart, suffix.trim()].filter(Boolean).join(", ");
+    return [formatPromptSections(promptSections), artistPart, suffix.trim()].filter(Boolean).join(", ");
   };
 
   const parse = () => {
@@ -158,7 +165,7 @@ export default function Home() {
   };
 
   const saveRecipe = () => {
-    const recipe: Recipe = { id: activeRecipeId || uid(), name: recipeName.trim() || "未命名画师串", artists, suffix, images, createdAt: Date.now() };
+    const recipe: Recipe = { id: activeRecipeId || uid(), name: recipeName.trim() || "未命名画师串", artists, suffix, promptSections, visiblePromptSections, images, createdAt: Date.now() };
     const next = activeRecipeId
       ? [recipe, ...recipes.filter((item) => item.id !== activeRecipeId)]
       : [recipe, ...recipes];
@@ -170,7 +177,17 @@ export default function Home() {
   const loadRecipe = (recipe: Recipe) => {
     setRecipeName(recipe.name);
     setArtists(recipe.artists.map((artist) => ({ ...artist, id: uid() })));
-    setSuffix(recipe.suffix);
+    if (recipe.promptSections) {
+      setPromptSections(recipe.promptSections);
+      setVisiblePromptSections(recipe.visiblePromptSections || basicPromptSections);
+      setSuffix(recipe.suffix || "");
+    } else {
+      const migrated = createEmptyPromptSections();
+      migrated.other = createPromptTags((recipe.suffix || "").split(","));
+      setPromptSections(migrated);
+      setVisiblePromptSections(migrated.other.length ? [...basicPromptSections, "other"] : basicPromptSections);
+      setSuffix("");
+    }
     setImages(recipe.images);
     setActiveRecipeId(recipe.id);
     setNotice(`已载入「${recipe.name}」`);
@@ -318,12 +335,28 @@ export default function Home() {
 
   const basketTagCount = Object.values(promptBasket).reduce((total, tags) => total + tags.length, 0);
 
+  const addTagsToPromptSection = (id: PromptSectionId, tags: string[]) => {
+    const readable = tags.map((tag) => tag.replace(/_/g, " ").trim()).filter(Boolean);
+    setPromptSections((current) => {
+      const existing = new Set(current[id].map((tag) => tag.text.toLowerCase()));
+      return { ...current, [id]: [...current[id], ...createPromptTags(readable.filter((tag) => !existing.has(tag.toLowerCase())))] };
+    });
+    if (!basicPromptSections.includes(id)) setVisiblePromptSections((current) => current.includes(id) ? current : [...current, id]);
+  };
+
+  const promptSectionForLabel = (label: string): PromptSectionId => {
+    if (label === "人物衣着") return "clothing";
+    if (label === "动作") return "action";
+    if (label === "构图视角") return "composition";
+    if (["成人内容", "分级与审查", "其他提示词"].includes(label)) return "other";
+    return "character";
+  };
+
   const sendBasketToWorkbench = () => {
     const basketArtists = (promptBasket["画师"] || []).map((tag) => tag.replace(/_/g, " "));
     const newArtists = basketArtists.filter((name) => !artists.some((artist) => artist.name.toLowerCase() === name.toLowerCase()));
-    const otherTags = Object.entries(promptBasket).filter(([label]) => label !== "画师" && label !== "元数据").flatMap(([, tags]) => tags).map((tag) => tag.replace(/_/g, " "));
     setArtists((current) => [...current, ...newArtists.map((name) => ({ id: uid(), name, weight: 1, enabled: true }))]);
-    setSuffix((current) => [...new Set([...current.split(",").map((tag) => tag.trim()).filter(Boolean), ...otherTags])].join(", "));
+    Object.entries(promptBasket).filter(([label]) => label !== "画师" && label !== "元数据").forEach(([label, tags]) => addTagsToPromptSection(promptSectionForLabel(label), tags));
     setActiveView("workbench");
     setNotice(`已把暂存篮中的 ${basketTagCount} 项标签发送到工作台`);
   };
@@ -336,8 +369,7 @@ export default function Home() {
       }
       setNotice(`已把画师 ${normalized} 加入当前画师串`);
     } else {
-      const readable = tag.replace(/_/g, " ");
-      setSuffix((current) => current.split(",").map((item) => item.trim()).includes(readable) ? current : [current.trim(), readable].filter(Boolean).join(", "));
+      addTagsToPromptSection("other", [tag]);
       setNotice(`已把提示词 ${readable} 加入通用提示词`);
     }
   };
@@ -399,12 +431,17 @@ export default function Home() {
   const sendPostToWorkbench = (post: DanbooruPost) => {
     const newArtists = post.artistTags.map((name) => name.replace(/_/g, " ")).filter((name) => !artists.some((artist) => artist.name.toLowerCase() === name.toLowerCase()));
     setArtists((current) => [...current, ...newArtists.map((name) => ({ id: uid(), name, weight: 1, enabled: true }))]);
-    setSuffix([...post.copyrightTags, ...post.characterTags, ...post.generalTags].map((tag) => tag.replace(/_/g, " ")).join(", "));
+    const groups = generalGroups(post.generalTags);
+    addTagsToPromptSection("character", [...post.copyrightTags, ...post.characterTags, ...groups.subjects, ...groups.hairColor, ...groups.eyes, ...groups.expressions, ...groups.features, ...groups.body]);
+    addTagsToPromptSection("clothing", groups.clothing);
+    addTagsToPromptSection("action", groups.actions);
+    if (groups.composition.length) addTagsToPromptSection("composition", groups.composition);
+    if ([...groups.adult, ...groups.censorship, ...groups.other].length) addTagsToPromptSection("other", [...groups.adult, ...groups.censorship, ...groups.other]);
     setActiveView("workbench");
     setNotice(`已发送作品 #${post.id} 的画师和提示词到工作台`);
   };
 
-  const generalGroups = (tags: string[]) => {
+  function generalGroups(tags: string[]) {
     const subjectWords = /^(?:solo|1girl|1boy|2girls|2boys|3girls|3boys|4girls|4boys|multiple_girls|multiple_boys|male_focus|female_focus)$/;
     const clothingWords = /dress|shirt|skirt|pants|shorts|uniform|jacket|coat|sleeve|shoes|boots|hat|gloves|swimsuit|bikini|lingerie|clothes|hoodie|kimono|armor|stockings|thighhighs|pantyhose|bra|necktie|ribbon|collar|choker|apron|robe|sweater|cardigan|socks|footwear|bare_shoulders|off_shoulder|cleavage|navel|midriff/;
     const censorWords = /^(?:censored|uncensored|mosaic_censoring|bar_censor|blank_censor|blur_censor|convenient_censoring|light_censor|identity_censor|fake_censor|partially_censored)$/;
@@ -442,7 +479,7 @@ export default function Home() {
       censorship,
       other: tags.filter((tag) => !ordered.some((group) => group.includes(tag))),
     };
-  };
+  }
 
   const copyTagGroup = async (label: string, tags: string[]) => {
     await navigator.clipboard.writeText(tags.join(", "));
@@ -490,7 +527,7 @@ export default function Home() {
         </nav>
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
-          {activeView === "workbench" && <><button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
+          {activeView === "workbench" && <><button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setPromptSections(createEmptyPromptSections()); setVisiblePromptSections(basicPromptSections); setSuffix(""); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
           <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button></>}
         </div>
       </header>
@@ -583,10 +620,12 @@ export default function Home() {
             <button className="add-artist" onClick={() => setArtists((current) => [...current, { id: uid(), name: "new artist", weight: 1, enabled: true }])}>＋ 手动添加画师</button>
           </section>
 
+          <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} />
+
           <section className="panel output-panel">
             <div className="panel-heading"><div><span className="step">04</span><h2>生成新版 Prompt</h2></div><button className="button primary" onClick={copyPrompt}>复制 Prompt</button></div>
-            <label className="suffix-label">追加通用提示词<input value={suffix} onChange={(event) => setSuffix(event.target.value)} /></label>
             <pre>{prompt || "等待添加画师……"}</pre>
+            {negativePrompt && <><div className="negative-label">Undesired Content</div><pre className="negative-output">{negativePrompt}</pre></>}
           </section>
 
           <section className="panel experiment-panel">

@@ -1,6 +1,7 @@
 "use client";
 
 import { Dispatch, SetStateAction, useMemo, useState } from "react";
+import { movePromptTagToSection } from "./prompt-import";
 
 export type PromptSectionId = "character" | "clothing" | "action" | "composition" | "scene" | "quality" | "other" | "negative";
 export type PromptTag = { id: string; text: string; weight: number; enabled: boolean };
@@ -61,11 +62,15 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     [next[index], next[target]] = [next[target], next[index]];
     return next;
   });
+  const changeTagSection = (from: PromptSectionId, to: PromptSectionId, tagId: string) => {
+    setSections((current) => movePromptTagToSection(current, from, to, tagId));
+    setVisibleSections((current) => current.includes(to) ? current : [...current, to]);
+  };
   const available = promptSectionDefinitions.filter((section) => section.optional && !visibleSections.includes(section.id));
 
   return <section className="panel prompt-editor-panel">
     <div className="panel-heading"><div><span className="step">P</span><h2>NovelAI 分区提示词</h2></div><span className="counter">{Object.values(sections).flat().filter((tag) => tag.enabled).length} 个启用标签</span></div>
-    <div className="prompt-editor-note">保持必要标签在前，构图、场景和质量词只在需要时添加。输入逗号分隔的标签后按 Enter。</div>
+    <div className="prompt-editor-note">保持必要标签在前，构图、场景和质量词只在需要时添加。输入逗号分隔的标签后按 Enter；分类有误时可直接用标签右侧的分类菜单移动。</div>
     <div className="prompt-section-list">{visibleSections.map((id) => {
       const definition = promptSectionDefinitions.find((section) => section.id === id)!;
       return <article className="prompt-section-card" key={id}>
@@ -74,6 +79,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
         {!sections[id].length ? <div className="prompt-section-empty">暂时留空，不会向最终 Prompt 添加任何内容。</div> : <div className="editable-tag-list">{sections[id].map((tag, index) => <div className={`${tag.enabled ? "" : "disabled"} ${counts[tag.text.trim().toLowerCase()] > 1 ? "duplicate" : ""}`} key={tag.id}>
           <button className="prompt-tag-toggle" onClick={() => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, enabled: !item.enabled } : item))}>{tag.enabled ? "✓" : "–"}</button>
           <input value={tag.text} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, text: event.target.value } : item))} />
+          <select className="prompt-tag-section" value={id} aria-label={`移动 ${tag.text} 到分类`} title="移动到其他分类" onChange={(event) => changeTagSection(id, event.target.value as PromptSectionId, tag.id)}>{promptSectionDefinitions.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select>
           <label>权重<input type="number" min="-9" max="9" step="0.05" value={tag.weight} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, weight: Number(event.target.value) || 0 } : item))} /></label>
           <button disabled={index === 0} onClick={() => moveTag(id, index, -1)}>↑</button><button disabled={index === sections[id].length - 1} onClick={() => moveTag(id, index, 1)}>↓</button>
           <button className="prompt-tag-remove" onClick={() => updateSection(id, (current) => current.filter((item) => item.id !== tag.id))}>×</button>

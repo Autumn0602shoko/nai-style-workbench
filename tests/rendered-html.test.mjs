@@ -37,9 +37,10 @@ test("server-renders the artist workbench", async () => {
 });
 
 test("includes local library and prompt editing capabilities", async () => {
-  const [page, layout] = await Promise.all([
+  const [page, layout, promptEditor] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/prompt-section-editor.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(page, /nai-style-recipes/);
   assert.match(page, /exportRecipes/);
@@ -48,5 +49,6 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /moveArtist/);
   assert.match(page, /importFullPrompt/);
   assert.match(page, /智能分类并加入/);
+  assert.match(promptEditor, /changeTagSection/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

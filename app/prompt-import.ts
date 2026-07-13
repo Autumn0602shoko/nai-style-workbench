@@ -1,4 +1,4 @@
-import type { PromptSectionId } from "./prompt-section-editor";
+import type { PromptSectionId, PromptSections } from "./prompt-section-editor";
 
 export type ImportedPromptTag = {
   text: string;
@@ -76,4 +76,17 @@ export function importPromptTags(input: string): ImportedPromptTag[] {
     result.push({ ...parsed, section: classifyPromptTag(parsed.text) });
   }
   return result;
+}
+
+/** Move one tag without changing its text, weight, enabled state, or id. */
+export function movePromptTagToSection(sections: PromptSections, from: PromptSectionId, to: PromptSectionId, tagId: string): PromptSections {
+  if (from === to) return sections;
+  const tag = sections[from].find((item) => item.id === tagId);
+  if (!tag) return sections;
+  const duplicate = sections[to].some((item) => item.text.trim().toLowerCase() === tag.text.trim().toLowerCase());
+  return {
+    ...sections,
+    [from]: sections[from].filter((item) => item.id !== tagId),
+    [to]: duplicate ? sections[to] : [...sections[to], tag],
+  };
 }

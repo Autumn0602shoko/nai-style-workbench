@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, net, protocol, shell } = require("electron");
+const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 
 protocol.registerSchemesAsPrivileged([{ scheme: "nai-image", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -205,9 +206,11 @@ app.whenReady().then(() => {
     return `data:${type};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;
   });
   ipcMain.handle("translations:dictionary", async () => {
-    const response = await fetchDanbooruResponse(new URL("https://nai-artist-workbench.banubate96.chatgpt.site/tag-translations.zh-CN.json"), 12_000, false);
-    if (!response.ok) throw new Error(`公共词典返回 ${response.status}`);
-    return response.json();
+    try {
+      const response = await fetchDanbooruResponse(new URL("https://raw.githubusercontent.com/Autumn0602shoko/nai-style-workbench/main/public/tag-translations.zh-CN.json"), 12_000, false);
+      if (response.ok) return response.json();
+    } catch {}
+    return JSON.parse(await readFile(path.join(__dirname, "..", "public", "tag-translations.zh-CN.json"), "utf8"));
   });
   createWindow();
   app.on("activate", () => {

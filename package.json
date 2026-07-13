@@ -53,7 +53,8 @@
     },
     "files": [
       "desktop/*.cjs",
-      "desktop-dist/renderer/**/*"
+      "desktop-dist/renderer/**/*",
+      "public/tag-translations.zh-CN.json"
     ],
     "win": {
       "target": "nsis",

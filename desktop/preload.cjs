@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld("naiDesktop", {
   suggestDanbooru: (request) => ipcRenderer.invoke("danbooru:suggest", request),
   loadDanbooruImage: (url) => ipcRenderer.invoke("danbooru:image", url),
   loadTagDictionary: () => ipcRenderer.invoke("translations:dictionary"),
+  lookupTranslation: (tag) => ipcRenderer.invoke("translations:lookup", tag),
 });

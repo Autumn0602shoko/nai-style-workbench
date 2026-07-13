@@ -41,6 +41,7 @@ const createWindow = () => {
       `(async () => {
         if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
         const dictionary = await window.naiDesktop.loadTagDictionary();
+        const translation = await window.naiDesktop.lookupTranslation("stocking");
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
         const tagSuggestions = await window.naiDesktop.suggestDanbooru({ q: "pink_h", mode: "tag" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", tag: "honashi", page: 1 });
@@ -48,7 +49,7 @@ const createWindow = () => {
         const thumbnailReady = await new Promise((resolve) => { const image = new Image(); image.onload = () => resolve(true); image.onerror = () => resolve(false); image.src = data.posts[0]?.previewUrl || ""; });
         const character = await window.naiDesktop.searchDanbooru({ q: "mika_(blue_archive)", mode: "tag", page: 1 });
         const combo = await window.naiDesktop.searchDanbooru({ q: "", mode: "tag", combo: ["mika_(blue_archive)", "1girl"], page: 1 });
-        return { ready: dictionary.entries?.halo === "光环" && suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && tagSuggestions.some((item) => item.name === "pink_hair") && data.selectedTag === "honashi" && data.totalCount > 24 && data.posts.length > 0 && pageTwo.selectedTag === "honashi" && pageTwo.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, dictionaryVersion: dictionary.version, suggestions: suggestions.length, tagSuggestions: tagSuggestions.length, count: data.posts.length, totalCount: data.totalCount, pageTwoCount: pageTwo.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        return { ready: dictionary.entries?.halo === "光环" && translation.candidates?.some((item) => /[\u3400-\u9fff]/.test(item)) && suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && tagSuggestions.some((item) => item.name === "pink_hair") && data.selectedTag === "honashi" && data.totalCount > 24 && data.posts.length > 0 && pageTwo.selectedTag === "honashi" && pageTwo.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, dictionaryVersion: dictionary.version, translationCandidates: translation.candidates, suggestions: suggestions.length, tagSuggestions: tagSuggestions.length, count: data.posts.length, totalCount: data.totalCount, pageTwoCount: pageTwo.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -65,10 +66,36 @@ const createWindow = () => {
 const danbooruSearchCache = new Map();
 const danbooruSuggestionCache = new Map();
 const danbooruTagMetaCache = new Map();
+const translationLookupCache = new Map();
 const getCached = (cache, key, maxAge) => {
   const hit = cache.get(key);
   if (!hit || Date.now() - hit.time > maxAge) { cache.delete(key); return null; }
   return hit.value;
+};
+
+const extractTranslationCandidates = (payload) => {
+  const simplify = (value) => value.replace(/[絲襪髮體視動裝顏頭側畫圖單雙後與門開閉藍綠黃紅暈臉腳褲襯領]/g, (character) => ({ 絲: "丝", 襪: "袜", 髮: "发", 體: "体", 視: "视", 動: "动", 裝: "装", 顏: "颜", 頭: "头", 側: "侧", 畫: "画", 圖: "图", 單: "单", 雙: "双", 後: "后", 與: "与", 門: "门", 開: "开", 閉: "闭", 藍: "蓝", 綠: "绿", 黃: "黄", 紅: "红", 暈: "晕", 臉: "脸", 腳: "脚", 褲: "裤", 襯: "衬", 領: "领" })[character] || character);
+  const values = [payload?.responseData?.translatedText, ...(Array.isArray(payload?.matches) ? payload.matches.map((match) => match?.translation) : [])];
+  return [...new Set(values
+    .filter((value) => typeof value === "string")
+    .map((value) => simplify(value.trim().replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")))
+    .filter((value) => value && value.length <= 120 && /[\u3400-\u9fff]/.test(value)))]
+    .slice(0, 6);
+};
+
+const lookupTranslation = async (value) => {
+  const tag = String(value || "").trim().replace(/_/g, " ").replace(/\s+/g, " ").slice(0, 120);
+  if (tag.length < 2) return { candidates: [], source: "MyMemory" };
+  const cacheKey = tag.toLowerCase();
+  const cached = getCached(translationLookupCache, cacheKey, 7 * 24 * 60 * 60_000);
+  if (cached) return cached;
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", tag);
+  url.searchParams.set("langpair", "en|zh-CN");
+  url.searchParams.set("mt", "1");
+  const response = await fetchDanbooruResponse(url, 12_000, false);
+  if (!response.ok) throw new Error(`翻译服务返回 ${response.status}`);
+  return setCached(translationLookupCache, cacheKey, { candidates: extractTranslationCandidates(await response.json()), source: "MyMemory" }, 500);
 };
 const setCached = (cache, key, value, maxEntries = 12) => {
   cache.set(key, { time: Date.now(), value });
@@ -78,7 +105,7 @@ const setCached = (cache, key, value, maxEntries = 12) => {
 
 const fetchDanbooruResponse = async (url, timeoutMs = 18_000, retry = true) => {
   try {
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.14.0" }, signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.15.0" }, signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok && response.status >= 500 && retry) return fetchDanbooruResponse(url, 30_000, false);
     return response;
   } catch (error) {
@@ -173,7 +200,7 @@ app.whenReady().then(() => {
       const source = new URL(request.url).searchParams.get("url");
       const imageUrl = new URL(String(source));
       if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") return new Response(null, { status: 404 });
-      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.14.0" } });
+      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.15.0" } });
     } catch { return new Response(null, { status: 404 }); }
   });
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));
@@ -200,7 +227,7 @@ app.whenReady().then(() => {
   ipcMain.handle("danbooru:image", async (_event, value) => {
     const url = new URL(String(value));
     if (url.protocol !== "https:" || url.hostname !== "cdn.donmai.us") throw new Error("不支持的图片地址");
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.5" }, signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.15.0" }, signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`图片加载失败 ${response.status}`);
     const type = response.headers.get("content-type") || "image/jpeg";
     return `data:${type};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;
@@ -212,6 +239,7 @@ app.whenReady().then(() => {
     } catch {}
     return JSON.parse(await readFile(path.join(__dirname, "..", "public", "tag-translations.zh-CN.json"), "utf8"));
   });
+  ipcMain.handle("translations:lookup", async (_event, tag) => lookupTranslation(tag));
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

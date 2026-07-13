@@ -61,5 +61,8 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /loadOnlineTagDictionary/);
   assert.match(promptEditor, /nai-online-tag-translations/);
   assert.match(promptEditor, /联网更新/);
+  assert.match(promptEditor, /translation-float/);
+  assert.match(promptEditor, /lookupTranslation/);
+  assert.match(page, /lookupTagTranslation/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

@@ -37,6 +37,7 @@ type Props = {
   setVisibleSections: Dispatch<SetStateAction<PromptSectionId[]>>;
   suggestTags?: (query: string) => Promise<{ name: string; count: number }[]>;
   loadOnlineDictionary?: () => Promise<{ version: string; updatedAt: string; entries: Record<string, string> }>;
+  lookupTranslation?: (tag: string) => Promise<{ candidates: string[]; source: string }>;
 };
 
 const ONLINE_DICTIONARY_CACHE_KEY = "nai-online-tag-translations";
@@ -53,7 +54,7 @@ const normalizeOnlineEntries = (source: unknown) => {
   return result;
 };
 
-export function PromptSectionEditor({ sections, setSections, visibleSections, setVisibleSections, suggestTags, loadOnlineDictionary }: Props) {
+export function PromptSectionEditor({ sections, setSections, visibleSections, setVisibleSections, suggestTags, loadOnlineDictionary, lookupTranslation }: Props) {
   const [inputs, setInputs] = useState<Partial<Record<PromptSectionId, string>>>({});
   const [addSection, setAddSection] = useState<PromptSectionId>("composition");
   const [activeSuggestionSection, setActiveSuggestionSection] = useState<PromptSectionId | null>(null);
@@ -70,7 +71,12 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const [dictionaryStatus, setDictionaryStatus] = useState("");
   const [dictionaryTag, setDictionaryTag] = useState("");
   const [dictionaryTranslation, setDictionaryTranslation] = useState("");
+  const [translationCandidates, setTranslationCandidates] = useState<string[]>([]);
+  const [translationLookupLoading, setTranslationLookupLoading] = useState(false);
+  const [translationLookupStatus, setTranslationLookupStatus] = useState("");
+  const [translationLookupRevision, setTranslationLookupRevision] = useState(0);
   const suggestionRequest = useRef(0);
+  const translationRequest = useRef(0);
   const counts = useMemo(() => Object.values(sections).flat().reduce<Record<string, number>>((result, tag) => {
     const key = tag.text.trim().toLowerCase();
     if (key) result[key] = (result[key] || 0) + 1;
@@ -124,8 +130,15 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     const translation = dictionaryTranslation.trim();
     if (!key || !translation) return;
     persistCustomTranslations({ ...customTranslations, [key]: translation });
-    setDictionaryTag("");
-    setDictionaryTranslation("");
+    setTranslationLookupStatus("已保存并应用到当前提示词");
+  };
+  const openTranslationDictionary = (tag = "") => {
+    const key = normalizeTranslationKey(tag);
+    setDictionaryTag(tag);
+    setDictionaryTranslation(key ? mergedTranslations[key] || "" : "");
+    setTranslationCandidates([]);
+    setTranslationLookupStatus("");
+    setDictionaryOpen(true);
   };
   const selectSuggestedTag = (id: PromptSectionId, name: string) => {
     const values = (inputs[id] || "").split(/[,\n]+/).map((tag) => tag.trim()).filter(Boolean);
@@ -177,6 +190,34 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   }, [activeSuggestionSection, inputs, suggestTags]);
 
   useEffect(() => {
+    const tag = dictionaryTag.trim();
+    const requestId = ++translationRequest.current;
+    if (!dictionaryOpen || !lookupTranslation || tag.length < 2) {
+      setTranslationCandidates([]);
+      setTranslationLookupLoading(false);
+      return;
+    }
+    setTranslationLookupLoading(true);
+    setTranslationLookupStatus("正在联网查找可能的中文释义…");
+    const timer = setTimeout(async () => {
+      try {
+        const result = await lookupTranslation(tag);
+        if (translationRequest.current !== requestId) return;
+        setTranslationCandidates(result.candidates);
+        setTranslationLookupStatus(result.candidates.length ? `找到 ${result.candidates.length} 个候选 · ${result.source}` : "没有找到合适候选，可以手动填写");
+      } catch {
+        if (translationRequest.current === requestId) {
+          setTranslationCandidates([]);
+          setTranslationLookupStatus("联网查询失败，可以手动填写后保存");
+        }
+      } finally {
+        if (translationRequest.current === requestId) setTranslationLookupLoading(false);
+      }
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [dictionaryOpen, dictionaryTag, lookupTranslation, translationLookupRevision]);
+
+  useEffect(() => {
     try { setCustomTranslations(JSON.parse(localStorage.getItem("nai-tag-translations") || "{}")); }
     catch { setCustomTranslations({}); }
   }, []);
@@ -203,15 +244,22 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const available = promptSectionDefinitions.filter((section) => section.optional && !visibleSections.includes(section.id));
 
   return <section className="panel prompt-editor-panel">
-    <div className="panel-heading"><div><span className="step">P</span><h2>NovelAI 分区提示词</h2></div><div className="prompt-heading-actions"><button className={showTranslations ? "active" : ""} onClick={() => setShowTranslations((current) => !current)}>中英对照</button><button className={bulkMode ? "active" : ""} onClick={() => { setBulkMode((current) => !current); setSelectedTagIds([]); setSelectedTagId(null); }}>批量管理</button><button className={dictionaryOpen ? "active" : ""} onClick={() => setDictionaryOpen((current) => !current)}>翻译词典</button><span className="counter">{Object.values(sections).flat().filter((tag) => tag.enabled).length} 个启用标签</span></div></div>
+    <div className="panel-heading"><div><span className="step">P</span><h2>NovelAI 分区提示词</h2></div><div className="prompt-heading-actions"><button className={showTranslations ? "active" : ""} onClick={() => setShowTranslations((current) => !current)}>中英对照</button><button className={bulkMode ? "active" : ""} onClick={() => { setBulkMode((current) => !current); setSelectedTagIds([]); setSelectedTagId(null); }}>批量管理</button><span className="counter">{Object.values(sections).flat().filter((tag) => tag.enabled).length} 个启用标签</span></div></div>
     <div className="prompt-editor-note">标签采用流式排列。点击标签可编辑英文、权重与分类；勾选按钮用于临时启用或停用，最终输出仍保持 NovelAI 英文格式。</div>
     {bulkMode && <div className="prompt-bulk-toolbar"><div><strong>批量选择</strong><span>已选 {selectedTagIds.length} / {allTagIds.length} 项</span></div><div><button disabled={!allTagIds.length || selectedTagIds.length === allTagIds.length} onClick={() => setSelectedTagIds(allTagIds)}>全选</button><button disabled={!selectedTagIds.length} onClick={() => setSelectedTagIds([])}>清空选择</button><button className="danger" disabled={!selectedTagIds.length} onClick={deleteSelectedTags}>删除选中</button></div></div>}
-    {dictionaryOpen && <div className="prompt-dictionary-panel">
-      <div className="dictionary-heading"><div><strong>翻译小词典</strong><span>内置 {getBuiltInTranslationCount()} 条 · 公共 {Object.keys(onlineTranslations).length} 条 · 自定义 {Object.keys(customTranslations).length} 条</span></div><button onClick={() => setDictionaryOpen(false)}>收起</button></div>
-      <div className="dictionary-sync"><span>{onlineDictionaryMeta ? `公共词典 ${onlineDictionaryMeta.version}${onlineDictionaryMeta.updatedAt ? ` · ${onlineDictionaryMeta.updatedAt}` : ""}` : "尚未下载公共词典"}</span>{dictionaryStatus && <em>{dictionaryStatus}</em>}<button disabled={dictionaryLoading || !loadOnlineDictionary} onClick={() => void refreshOnlineDictionary(false)}>{dictionaryLoading ? "更新中…" : "联网更新"}</button></div>
-      <div className="dictionary-form"><input value={dictionaryTag} onChange={(event) => setDictionaryTag(event.target.value)} placeholder="英文标签，如 halo" /><input value={dictionaryTranslation} onChange={(event) => setDictionaryTranslation(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveCustomTranslation(); }} placeholder="中文释义，如 光环" /><button disabled={!dictionaryTag.trim() || !dictionaryTranslation.trim()} onClick={saveCustomTranslation}>保存翻译</button></div>
-      {!!Object.keys(customTranslations).length && <div className="dictionary-entries">{Object.entries(customTranslations).map(([tag, translation]) => <span key={tag}><b>{tag}</b><em>{translation}</em><button aria-label={`删除 ${tag} 的翻译`} onClick={() => { const next = { ...customTranslations }; delete next[tag]; persistCustomTranslations(next); }}>×</button></span>)}</div>}
-    </div>}
+    {!dictionaryOpen && <button className="translation-float-launcher" onClick={() => openTranslationDictionary()}>译<span>小词典</span></button>}
+    {dictionaryOpen && <aside className="translation-float" role="dialog" aria-label="翻译小词典">
+      <header><div><strong>翻译小词典</strong><span>联网查找当前 Danbooru 标签</span></div><button aria-label="关闭翻译小词典" onClick={() => setDictionaryOpen(false)}>×</button></header>
+      <div className="translation-float-body">
+        <label>英文标签<input autoFocus value={dictionaryTag} onChange={(event) => { setDictionaryTag(event.target.value); setDictionaryTranslation(""); setTranslationCandidates([]); }} placeholder="例如 stocking" /></label>
+        <div className={`translation-lookup-state ${translationLookupLoading ? "loading" : ""}`}><span>{translationLookupStatus || "输入标签后会自动联网查找"}</span><button disabled={translationLookupLoading || dictionaryTag.trim().length < 2 || !lookupTranslation} onClick={() => setTranslationLookupRevision((current) => current + 1)}>重新查找</button></div>
+        {!!translationCandidates.length && <div className="translation-candidates">{translationCandidates.map((candidate) => <button className={dictionaryTranslation === candidate ? "active" : ""} key={candidate} onClick={() => setDictionaryTranslation(candidate)}>{candidate}</button>)}</div>}
+        <label>采用的中文释义<input value={dictionaryTranslation} onChange={(event) => setDictionaryTranslation(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveCustomTranslation(); }} placeholder="可选择候选，也可以自己修改" /></label>
+        <div className="translation-float-actions"><button className="primary" disabled={!dictionaryTag.trim() || !dictionaryTranslation.trim()} onClick={saveCustomTranslation}>保存并应用</button></div>
+        <div className="translation-float-meta"><span>只会联网发送当前英文标签，不会发送整段 Prompt</span><button disabled={dictionaryLoading || !loadOnlineDictionary} onClick={() => void refreshOnlineDictionary(false)}>{dictionaryLoading ? "更新中…" : "更新基础词库"}</button></div>
+        <details><summary>我的翻译 {Object.keys(customTranslations).length} 条 · 基础词库 {getBuiltInTranslationCount() + Object.keys(onlineTranslations).length} 条</summary>{dictionaryStatus && <p>{dictionaryStatus}</p>}{onlineDictionaryMeta && <p>公共词典 {onlineDictionaryMeta.version} · {onlineDictionaryMeta.updatedAt}</p>}{!!Object.keys(customTranslations).length && <div className="dictionary-entries">{Object.entries(customTranslations).map(([tag, translation]) => <span key={tag}><b>{tag}</b><em>{translation}</em><button aria-label={`删除 ${tag} 的翻译`} onClick={() => { const next = { ...customTranslations }; delete next[tag]; persistCustomTranslations(next); }}>×</button></span>)}</div>}</details>
+      </div>
+    </aside>}
     <div className="prompt-section-list">{visibleSections.map((id) => {
       const definition = promptSectionDefinitions.find((section) => section.id === id)!;
       const selectedTag = sections[id].find((tag) => tag.id === selectedTagId);
@@ -229,7 +277,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
           </div>;
         })}</div>}
         {selectedTag && !bulkMode && <div className="prompt-tag-inspector">
-          <div className="prompt-inspector-title"><strong>编辑标签</strong><span>{showTranslations ? translateDanbooruTag(selectedTag.text, mergedTranslations) || "暂无本地翻译" : "英文标签将用于最终输出"}</span>{showTranslations && !translateDanbooruTag(selectedTag.text, mergedTranslations) && <button onClick={() => { setDictionaryOpen(true); setDictionaryTag(selectedTag.text); }}>添加翻译</button>}<button onClick={() => setSelectedTagId(null)}>收起</button></div>
+          <div className="prompt-inspector-title"><strong>编辑标签</strong><span>{showTranslations ? translateDanbooruTag(selectedTag.text, mergedTranslations) || "暂无本地翻译" : "英文标签将用于最终输出"}</span>{showTranslations && !translateDanbooruTag(selectedTag.text, mergedTranslations) && <button onClick={() => openTranslationDictionary(selectedTag.text)}>添加翻译</button>}<button onClick={() => setSelectedTagId(null)}>收起</button></div>
           <div className="prompt-inspector-fields">
             <input aria-label="英文提示词" value={selectedTag.text} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === selectedTag.id ? { ...item, text: event.target.value } : item))} />
             <select value={id} aria-label={`移动 ${selectedTag.text} 到分类`} onChange={(event) => changeTagSection(id, event.target.value as PromptSectionId, selectedTag.id)}>{promptSectionDefinitions.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select>

@@ -2,6 +2,7 @@
 
 import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { movePromptTagToSection } from "./prompt-import";
+import { translateDanbooruTag } from "./tag-translation";
 
 export type PromptSectionId = "character" | "clothing" | "action" | "composition" | "scene" | "quality" | "other" | "negative";
 export type PromptTag = { id: string; text: string; weight: number; enabled: boolean };
@@ -42,6 +43,8 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const [addSection, setAddSection] = useState<PromptSectionId>("composition");
   const [activeSuggestionSection, setActiveSuggestionSection] = useState<PromptSectionId | null>(null);
   const [tagSuggestions, setTagSuggestions] = useState<{ name: string; count: number }[]>([]);
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  const [showTranslations, setShowTranslations] = useState(true);
   const suggestionRequest = useRef(0);
   const counts = useMemo(() => Object.values(sections).flat().reduce<Record<string, number>>((result, tag) => {
     const key = tag.text.trim().toLowerCase();
@@ -99,23 +102,33 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const available = promptSectionDefinitions.filter((section) => section.optional && !visibleSections.includes(section.id));
 
   return <section className="panel prompt-editor-panel">
-    <div className="panel-heading"><div><span className="step">P</span><h2>NovelAI 分区提示词</h2></div><span className="counter">{Object.values(sections).flat().filter((tag) => tag.enabled).length} 个启用标签</span></div>
-    <div className="prompt-editor-note">保持必要标签在前，构图、场景和质量词只在需要时添加。输入两个字母即可查看 Danbooru 候选；分类有误时可直接用标签右侧的分类菜单移动。</div>
+    <div className="panel-heading"><div><span className="step">P</span><h2>NovelAI 分区提示词</h2></div><div className="prompt-heading-actions"><button className={showTranslations ? "active" : ""} onClick={() => setShowTranslations((current) => !current)}>中英对照</button><span className="counter">{Object.values(sections).flat().filter((tag) => tag.enabled).length} 个启用标签</span></div></div>
+    <div className="prompt-editor-note">标签采用流式排列。点击标签可编辑英文、权重与分类；勾选按钮用于临时启用或停用，最终输出仍保持 NovelAI 英文格式。</div>
     <div className="prompt-section-list">{visibleSections.map((id) => {
       const definition = promptSectionDefinitions.find((section) => section.id === id)!;
+      const selectedTag = sections[id].find((tag) => tag.id === selectedTagId);
+      const selectedIndex = selectedTag ? sections[id].findIndex((tag) => tag.id === selectedTag.id) : -1;
       return <article className="prompt-section-card" key={id}>
-        <header><div><h3>{definition.label}</h3><p>{definition.hint}</p></div>{definition.optional && <button onClick={() => setVisibleSections((current) => current.filter((item) => item !== id))}>收起</button>}</header>
+        <header><div><h3>{definition.label}<small>{sections[id].length} 项</small></h3><p>{definition.hint}</p></div>{definition.optional && <button onClick={() => { if (selectedTag) setSelectedTagId(null); setVisibleSections((current) => current.filter((item) => item !== id)); }}>收起</button>}</header>
         <div className="prompt-tag-input"><input value={inputs[id] || ""} onFocus={() => setActiveSuggestionSection(id)} onBlur={() => setTimeout(() => setActiveSuggestionSection((current) => current === id ? null : current), 120)} onChange={(event) => { setInputs((current) => ({ ...current, [id]: event.target.value })); setActiveSuggestionSection(id); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addInputTags(id); } }} placeholder={`添加${definition.label}标签…`} /><button onClick={() => addInputTags(id)}>添加</button></div>
         {activeSuggestionSection === id && !!tagSuggestions.length && <div className="prompt-tag-suggestions">{tagSuggestions.map((suggestion) => <button key={suggestion.name} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSuggestedTag(id, suggestion.name)}><span>{suggestion.name}</span><small>{suggestion.count.toLocaleString()} 张</small></button>)}</div>}
-        {!sections[id].length ? <div className="prompt-section-empty">暂时留空，不会向最终 Prompt 添加任何内容。</div> : <div className="editable-tag-list">{sections[id].map((tag, index) => <div className={`${tag.enabled ? "" : "disabled"} ${counts[tag.text.trim().toLowerCase()] > 1 ? "duplicate" : ""}`} key={tag.id}>
-          <button className="prompt-tag-toggle" onClick={() => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, enabled: !item.enabled } : item))}>{tag.enabled ? "✓" : "–"}</button>
-          <input value={tag.text} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, text: event.target.value } : item))} />
-          <select className="prompt-tag-section" value={id} aria-label={`移动 ${tag.text} 到分类`} title="移动到其他分类" onChange={(event) => changeTagSection(id, event.target.value as PromptSectionId, tag.id)}>{promptSectionDefinitions.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select>
-          <label>权重<input type="number" min="-9" max="9" step="0.05" value={tag.weight} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, weight: Number(event.target.value) || 0 } : item))} /></label>
-          <button disabled={index === 0} onClick={() => moveTag(id, index, -1)}>↑</button><button disabled={index === sections[id].length - 1} onClick={() => moveTag(id, index, 1)}>↓</button>
-          <button className="prompt-tag-remove" onClick={() => updateSection(id, (current) => current.filter((item) => item.id !== tag.id))}>×</button>
-          {counts[tag.text.trim().toLowerCase()] > 1 && <small>重复</small>}
-        </div>)}</div>}
+        {!sections[id].length ? <div className="prompt-section-empty">暂时留空，不会向最终 Prompt 添加任何内容。</div> : <div className="prompt-tag-cloud">{sections[id].map((tag) => {
+          const translation = showTranslations ? translateDanbooruTag(tag.text) : null;
+          return <div className={`prompt-chip ${tag.enabled ? "" : "disabled"} ${selectedTagId === tag.id ? "selected" : ""} ${counts[tag.text.trim().toLowerCase()] > 1 ? "duplicate" : ""}`} key={tag.id}>
+            <button className="prompt-chip-toggle" title={tag.enabled ? "停用标签" : "启用标签"} onClick={() => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, enabled: !item.enabled } : item))}>{tag.enabled ? "✓" : "–"}</button>
+            <button className="prompt-chip-main" onClick={() => setSelectedTagId((current) => current === tag.id ? null : tag.id)}><span>{tag.text}</span>{translation && <small>{translation}</small>}{tag.weight !== 1 && <b>{Number(tag.weight.toFixed(2))}</b>}</button>
+          </div>;
+        })}</div>}
+        {selectedTag && <div className="prompt-tag-inspector">
+          <div className="prompt-inspector-title"><strong>编辑标签</strong><span>{showTranslations ? translateDanbooruTag(selectedTag.text) || "暂无本地翻译" : "英文标签将用于最终输出"}</span><button onClick={() => setSelectedTagId(null)}>收起</button></div>
+          <div className="prompt-inspector-fields">
+            <input aria-label="英文提示词" value={selectedTag.text} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === selectedTag.id ? { ...item, text: event.target.value } : item))} />
+            <select value={id} aria-label={`移动 ${selectedTag.text} 到分类`} onChange={(event) => changeTagSection(id, event.target.value as PromptSectionId, selectedTag.id)}>{promptSectionDefinitions.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select>
+            <label>权重<input type="number" min="-9" max="9" step="0.05" value={selectedTag.weight} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === selectedTag.id ? { ...item, weight: Number(event.target.value) || 0 } : item))} /></label>
+            <button disabled={selectedIndex === 0} onClick={() => moveTag(id, selectedIndex, -1)}>前移</button><button disabled={selectedIndex === sections[id].length - 1} onClick={() => moveTag(id, selectedIndex, 1)}>后移</button>
+            <button className="prompt-tag-remove" onClick={() => { updateSection(id, (current) => current.filter((item) => item.id !== selectedTag.id)); setSelectedTagId(null); }}>删除</button>
+          </div>
+        </div>}
       </article>;
     })}</div>
     {!!available.length && <div className="add-prompt-section"><select value={available.some((section) => section.id === addSection) ? addSection : available[0].id} onChange={(event) => setAddSection(event.target.value as PromptSectionId)}>{available.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select><button onClick={() => { const id = available.some((section) => section.id === addSection) ? addSection : available[0].id; setVisibleSections((current) => [...current, id]); }}>＋ 添加分类</button></div>}

@@ -1,6 +1,6 @@
 {
   "name": "nai-style-workbench",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "用于解析、调整和收藏 NovelAI 画师串的本地桌面工作台。",
   "author": "Autumn0602shoko",
   "private": true,

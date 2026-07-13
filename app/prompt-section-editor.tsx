@@ -159,7 +159,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
           const translation = showTranslations ? translateDanbooruTag(tag.text, customTranslations) : null;
           return <div className={`prompt-chip ${tag.enabled ? "" : "disabled"} ${selectedTagId === tag.id ? "selected" : ""} ${selectedTagIds.includes(tag.id) ? "bulk-selected" : ""} ${counts[tag.text.trim().toLowerCase()] > 1 ? "duplicate" : ""}`} key={tag.id}>
             <button className="prompt-chip-toggle" title={tag.enabled ? "停用标签" : "启用标签"} onClick={() => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, enabled: !item.enabled } : item))}>{tag.enabled ? "✓" : "–"}</button>
-            <button className="prompt-chip-main" onClick={() => bulkMode ? toggleBulkTag(tag.id) : setSelectedTagId((current) => current === tag.id ? null : tag.id)}><span>{tag.text}</span>{translation && <small>{translation}</small>}{tag.weight !== 1 && <b>{Number(tag.weight.toFixed(2))}</b>}</button>
+            <button className="prompt-chip-main" onClick={() => bulkMode ? toggleBulkTag(tag.id) : setSelectedTagId((current) => current === tag.id ? null : tag.id)}><span>{tag.text}</span>{translation ? <small>{translation}</small> : showTranslations ? <small className="translation-missing">待补充</small> : null}{tag.weight !== 1 && <b>{Number(tag.weight.toFixed(2))}</b>}</button>
             <button className="prompt-chip-delete" aria-label={`删除 ${tag.text}`} title="删除标签" onClick={() => removeTag(id, tag.id)}>×</button>
           </div>;
         })}</div>}

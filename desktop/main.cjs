@@ -76,7 +76,7 @@ const setCached = (cache, key, value, maxEntries = 12) => {
 
 const fetchDanbooruResponse = async (url, timeoutMs = 18_000, retry = true) => {
   try {
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.13.0" }, signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.13.1" }, signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok && response.status >= 500 && retry) return fetchDanbooruResponse(url, 30_000, false);
     return response;
   } catch (error) {
@@ -171,7 +171,7 @@ app.whenReady().then(() => {
       const source = new URL(request.url).searchParams.get("url");
       const imageUrl = new URL(String(source));
       if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") return new Response(null, { status: 404 });
-      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.13.0" } });
+      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.13.1" } });
     } catch { return new Response(null, { status: 404 }); }
   });
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));

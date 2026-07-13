@@ -56,6 +56,7 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(promptEditor, /prompt-chip-delete/);
   assert.match(promptEditor, /deleteSelectedTags/);
   assert.match(promptEditor, /nai-tag-translations/);
+  assert.match(promptEditor, /translation-missing/);
   assert.match(page, /suggestDanbooruTags/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

@@ -19,3 +19,11 @@ test("prefers user dictionary translations", () => {
   assert.equal(translateDanbooruTag("halo", { halo: "光环" }), "光环");
   assert.equal(translateDanbooruTag("white_hair", { "white hair": "银白发" }), "银白发");
 });
+
+test("covers common face and hair tags from imported prompts", () => {
+  assert.equal(translateDanbooruTag("demon_girl"), "恶魔女孩");
+  assert.equal(translateDanbooruTag("sidelocks"), "鬓发");
+  assert.equal(translateDanbooruTag("hairclip"), "发夹");
+  assert.equal(translateDanbooruTag("halo"), "光环");
+  assert.equal(translateDanbooruTag("forehead"), "额头");
+});

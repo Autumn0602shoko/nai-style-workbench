@@ -200,6 +200,7 @@ main { min-height:100vh; padding-bottom:64px; }
 .prompt-chip-main { display:flex; align-items:center; gap:7px; min-width:0; min-height:34px; padding:0 9px; color:#35445f; }
 .prompt-chip-main span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .prompt-chip-main small { color:#8a7692; font-size:9px; white-space:nowrap; }
+.prompt-chip-main small.translation-missing { color:#b29a8a; font-style:italic; }
 .prompt-chip-main b { padding:2px 5px; border-radius:4px; background:#e9eef9; color:#4a62a3; font:8px Consolas,monospace; }
 .prompt-chip-delete { width:27px; flex:0 0 27px; border-left:1px solid #e0dce5!important; color:#b26d6d; font-size:14px; }
 .prompt-chip-delete:hover { background:#fff0f0!important; color:#bd3f3f; }

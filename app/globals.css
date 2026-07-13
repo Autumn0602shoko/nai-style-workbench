@@ -157,6 +157,11 @@ main { min-height:100vh; padding-bottom:64px; }
 .prompt-page-grid { display:grid; grid-template-columns:minmax(560px,1.45fr) minmax(330px,.75fr); gap:18px; align-items:start; }
 .prompt-page-main,.prompt-page-side { display:grid; gap:18px; min-width:0; }
 .prompt-page-side { position:sticky; top:18px; }
+.prompt-import-panel { border-top:3px solid #4f83bd; }
+.prompt-import-panel>p { margin:0; padding:11px 16px 0; color:#6b7688; font-size:11px; line-height:1.6; }
+.prompt-import-panel>textarea { display:block; width:calc(100% - 32px); min-height:92px; margin:10px 16px; padding:11px 12px; resize:vertical; border:1px solid #d8deea; border-radius:8px; color:#354159; font:11px/1.65 Consolas,monospace; }
+.prompt-import-panel>textarea:focus { outline:2px solid #d9e8fa; border-color:#6d9bd0; }
+.prompt-import-actions { display:flex; gap:8px; padding:0 16px 14px; }
 .artist-context-panel { border-top:3px solid var(--orange); }
 .artist-context-copy { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px 0; }
 .artist-context-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#354159; font-size:13px; }

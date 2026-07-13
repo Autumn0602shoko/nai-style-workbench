@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { parseArtistTags } from "./artist-parser";
+import { importPromptTags } from "./prompt-import";
 import { basicPromptSections, createEmptyPromptSections, createPromptTags, formatNegativePrompt, formatPromptSections, PromptSectionEditor, PromptSectionId, PromptSections } from "./prompt-section-editor";
 import { createWeightExperiments } from "./weight-experiments";
 
@@ -65,6 +66,7 @@ export default function Home() {
   const [suffix, setSuffix] = useState("");
   const [promptSections, setPromptSections] = useState<PromptSections>(createEmptyPromptSections);
   const [visiblePromptSections, setVisiblePromptSections] = useState<PromptSectionId[]>(basicPromptSections);
+  const [promptImportText, setPromptImportText] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [notice, setNotice] = useState("");
@@ -155,6 +157,37 @@ export default function Home() {
     const next = parseArtistTags(raw).map((artist) => ({ ...artist, id: uid(), enabled: true }));
     setArtists(next);
     setNotice(next.length ? `已提取 ${next.length} 位画师` : "没有识别到 artist: 画师标签");
+  };
+
+  const importFullPrompt = () => {
+    const importedArtists = parseArtistTags(promptImportText);
+    const importedTags = importPromptTags(promptImportText);
+    if (!importedArtists.length && !importedTags.length) {
+      setNotice("没有识别到可导入的提示词");
+      return;
+    }
+
+    setArtists((current) => {
+      const existing = new Set(current.map((artist) => artist.name.toLowerCase()));
+      return [...current, ...importedArtists
+        .filter((artist) => !existing.has(artist.name.toLowerCase()))
+        .map((artist) => ({ ...artist, id: uid(), enabled: true }))];
+    });
+    setPromptSections((current) => {
+      const next: PromptSections = Object.fromEntries(Object.entries(current).map(([id, tags]) => [id, [...tags]])) as PromptSections;
+      const existing = new Set(Object.values(current).flat().map((tag) => tag.text.trim().toLowerCase()));
+      for (const imported of importedTags) {
+        const key = imported.text.trim().toLowerCase();
+        if (existing.has(key)) continue;
+        existing.add(key);
+        next[imported.section].push({ ...createPromptTags([imported.text])[0], weight: imported.weight });
+      }
+      return next;
+    });
+    const usedSections = [...new Set(importedTags.map((tag) => tag.section))];
+    setVisiblePromptSections((current) => [...current, ...usedSections.filter((id) => !current.includes(id))]);
+    setPromptImportText("");
+    setNotice(`已导入 ${importedTags.length} 个普通标签${importedArtists.length ? `和 ${importedArtists.length} 位画师` : ""}`);
   };
 
   const updateArtist = (id: string, patch: Partial<Artist>) =>
@@ -572,7 +605,15 @@ export default function Home() {
       {activeView === "prompt" && <section className="prompt-page">
         <div className="gallery-title"><div><p className="eyebrow">NOVELAI PROMPT EDITOR</p><h2>分区提示词编辑器</h2><p>只添加画面真正需要的内容，最终自动整理为 NovelAI 格式。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>调整画师串</button></div>
         <div className="prompt-page-grid">
-          <div className="prompt-page-main"><PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} /></div>
+          <div className="prompt-page-main">
+            <section className="panel prompt-import-panel">
+              <div className="panel-heading"><div><span className="step">IN</span><h2>导入已有 Prompt</h2></div><span className="counter">只追加，不覆盖</span></div>
+              <p>粘贴完整的 NovelAI Prompt，程序会保留数字权重与大括号、方括号强弱关系，并自动整理分类。</p>
+              <textarea value={promptImportText} onChange={(event) => setPromptImportText(event.target.value)} placeholder="例如：1girl, pink_hair, 1.2::smile::, black_dress, from_above…" />
+              <div className="prompt-import-actions"><button className="button primary" disabled={!promptImportText.trim()} onClick={importFullPrompt}>智能分类并加入</button><button className="button secondary" disabled={!promptImportText} onClick={() => setPromptImportText("")}>清空</button></div>
+            </section>
+            <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} />
+          </div>
           <aside className="prompt-page-side">
             <section className="panel artist-context-panel">
               <div className="panel-heading"><div><span className="step">A</span><h2>当前画师串</h2></div><button className="text-button" onClick={() => setActiveView("workbench")}>编辑</button></div>

@@ -46,5 +46,7 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /importRecipes/);
   assert.match(page, /dropImages/);
   assert.match(page, /moveArtist/);
+  assert.match(page, /importFullPrompt/);
+  assert.match(page, /智能分类并加入/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

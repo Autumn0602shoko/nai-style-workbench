@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseArtistTags } from "./artist-parser";
 import { importPromptTags } from "./prompt-import";
 import { basicPromptSections, createEmptyPromptSections, createPromptTags, formatNegativePrompt, formatPromptSections, PromptSectionEditor, PromptSectionId, PromptSections } from "./prompt-section-editor";
@@ -95,6 +95,23 @@ export default function Home() {
   const importRecipesRef = useRef<HTMLInputElement>(null);
   const autocompleteCache = useRef(new Map<string, { name: string; count: number }[]>());
 
+  const suggestDanbooruTags = useCallback(async (query: string, mode: "artist" | "tag" = "tag") => {
+    const cacheKey = `${mode}:${query.toLowerCase().replace(/\s+/g, "_")}`;
+    const cached = autocompleteCache.current.get(cacheKey);
+    if (cached) return cached;
+    let suggestions: { name: string; count: number }[];
+    if (window.naiDesktop) suggestions = await window.naiDesktop.suggestDanbooru({ q: query, mode });
+    else {
+      const params = new URLSearchParams({ q: query, mode, suggest: "1" });
+      const response = await fetch(`/api/danbooru?${params}`);
+      const data = await response.json() as { suggestions: { name: string; count: number }[] };
+      suggestions = data.suggestions || [];
+    }
+    autocompleteCache.current.set(cacheKey, suggestions);
+    return suggestions;
+  }, []);
+  const suggestPromptTags = useCallback((query: string) => suggestDanbooruTags(query, "tag"), [suggestDanbooruTags]);
+
   useEffect(() => {
     try {
       setRecipes(JSON.parse(localStorage.getItem("nai-style-recipes") || "[]"));
@@ -111,23 +128,12 @@ export default function Home() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const cacheKey = `${booruMode}:${query.toLowerCase().replace(/\s+/g, "_")}`;
-        const cached = autocompleteCache.current.get(cacheKey);
-        if (cached) { if (!cancelled) setAutocomplete(cached); return; }
-        let suggestions: { name: string; count: number }[];
-        if (window.naiDesktop) suggestions = await window.naiDesktop.suggestDanbooru({ q: query, mode: booruMode });
-        else {
-          const params = new URLSearchParams({ q: query, mode: booruMode, suggest: "1" });
-          const response = await fetch(`/api/danbooru?${params}`);
-          const data = await response.json() as { suggestions: { name: string; count: number }[] };
-          suggestions = data.suggestions || [];
-        }
-        autocompleteCache.current.set(cacheKey, suggestions);
+        const suggestions = await suggestDanbooruTags(query, booruMode);
         if (!cancelled) setAutocomplete(suggestions);
       } catch { if (!cancelled) setAutocomplete([]); }
     }, 320);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [booruQuery, booruMode]);
+  }, [booruQuery, booruMode, suggestDanbooruTags]);
 
   const artistPrompt = useMemo(() => artists
     .filter((artist) => artist.enabled)
@@ -612,7 +618,7 @@ export default function Home() {
               <textarea value={promptImportText} onChange={(event) => setPromptImportText(event.target.value)} placeholder="例如：1girl, pink_hair, 1.2::smile::, black_dress, from_above…" />
               <div className="prompt-import-actions"><button className="button primary" disabled={!promptImportText.trim()} onClick={importFullPrompt}>智能分类并加入</button><button className="button secondary" disabled={!promptImportText} onClick={() => setPromptImportText("")}>清空</button></div>
             </section>
-            <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} />
+            <PromptSectionEditor sections={promptSections} setSections={setPromptSections} visibleSections={visiblePromptSections} setVisibleSections={setVisiblePromptSections} suggestTags={suggestPromptTags} />
           </div>
           <aside className="prompt-page-side">
             <section className="panel artist-context-panel">

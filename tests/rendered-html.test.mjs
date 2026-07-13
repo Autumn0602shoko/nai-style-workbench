@@ -50,5 +50,7 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /importFullPrompt/);
   assert.match(page, /智能分类并加入/);
   assert.match(promptEditor, /changeTagSection/);
+  assert.match(promptEditor, /prompt-tag-suggestions/);
+  assert.match(page, /suggestDanbooruTags/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

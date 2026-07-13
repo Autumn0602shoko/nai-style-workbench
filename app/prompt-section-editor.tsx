@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, SetStateAction, useMemo, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { movePromptTagToSection } from "./prompt-import";
 
 export type PromptSectionId = "character" | "clothing" | "action" | "composition" | "scene" | "quality" | "other" | "negative";
@@ -34,11 +34,15 @@ type Props = {
   setSections: Dispatch<SetStateAction<PromptSections>>;
   visibleSections: PromptSectionId[];
   setVisibleSections: Dispatch<SetStateAction<PromptSectionId[]>>;
+  suggestTags?: (query: string) => Promise<{ name: string; count: number }[]>;
 };
 
-export function PromptSectionEditor({ sections, setSections, visibleSections, setVisibleSections }: Props) {
+export function PromptSectionEditor({ sections, setSections, visibleSections, setVisibleSections, suggestTags }: Props) {
   const [inputs, setInputs] = useState<Partial<Record<PromptSectionId, string>>>({});
   const [addSection, setAddSection] = useState<PromptSectionId>("composition");
+  const [activeSuggestionSection, setActiveSuggestionSection] = useState<PromptSectionId | null>(null);
+  const [tagSuggestions, setTagSuggestions] = useState<{ name: string; count: number }[]>([]);
+  const suggestionRequest = useRef(0);
   const counts = useMemo(() => Object.values(sections).flat().reduce<Record<string, number>>((result, tag) => {
     const key = tag.text.trim().toLowerCase();
     if (key) result[key] = (result[key] || 0) + 1;
@@ -46,14 +50,16 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   }, {}), [sections]);
 
   const updateSection = (id: PromptSectionId, updater: (tags: PromptTag[]) => PromptTag[]) => setSections((current) => ({ ...current, [id]: updater(current[id]) }));
+  const addValues = (id: PromptSectionId, values: string[]) => updateSection(id, (current) => {
+    const existing = new Set(current.map((tag) => tag.text.toLowerCase()));
+    return [...current, ...createPromptTags(values.filter((tag) => !existing.has(tag.toLowerCase())))];
+  });
   const addInputTags = (id: PromptSectionId) => {
     const values = (inputs[id] || "").split(/[,\n]+/).map((tag) => tag.trim()).filter(Boolean);
     if (!values.length) return;
-    updateSection(id, (current) => {
-      const existing = new Set(current.map((tag) => tag.text.toLowerCase()));
-      return [...current, ...createPromptTags(values.filter((tag) => !existing.has(tag.toLowerCase())))];
-    });
+    addValues(id, values);
     setInputs((current) => ({ ...current, [id]: "" }));
+    setTagSuggestions([]);
   };
   const moveTag = (id: PromptSectionId, index: number, direction: -1 | 1) => updateSection(id, (current) => {
     const target = index + direction;
@@ -66,16 +72,41 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     setSections((current) => movePromptTagToSection(current, from, to, tagId));
     setVisibleSections((current) => current.includes(to) ? current : [...current, to]);
   };
+  const selectSuggestedTag = (id: PromptSectionId, name: string) => {
+    const values = (inputs[id] || "").split(/[,\n]+/).map((tag) => tag.trim()).filter(Boolean);
+    if (values.length) values.pop();
+    addValues(id, [...values, name]);
+    setInputs((current) => ({ ...current, [id]: "" }));
+    setTagSuggestions([]);
+    setActiveSuggestionSection(null);
+  };
+
+  useEffect(() => {
+    const raw = activeSuggestionSection ? inputs[activeSuggestionSection] || "" : "";
+    const query = raw.split(/[,\n]+/).at(-1)?.trim() || "";
+    const requestId = ++suggestionRequest.current;
+    if (!suggestTags || query.length < 2) { setTagSuggestions([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const suggestions = await suggestTags(query);
+        if (suggestionRequest.current === requestId) setTagSuggestions(suggestions.slice(0, 16));
+      } catch {
+        if (suggestionRequest.current === requestId) setTagSuggestions([]);
+      }
+    }, 260);
+    return () => clearTimeout(timer);
+  }, [activeSuggestionSection, inputs, suggestTags]);
   const available = promptSectionDefinitions.filter((section) => section.optional && !visibleSections.includes(section.id));
 
   return <section className="panel prompt-editor-panel">
     <div className="panel-heading"><div><span className="step">P</span><h2>NovelAI 分区提示词</h2></div><span className="counter">{Object.values(sections).flat().filter((tag) => tag.enabled).length} 个启用标签</span></div>
-    <div className="prompt-editor-note">保持必要标签在前，构图、场景和质量词只在需要时添加。输入逗号分隔的标签后按 Enter；分类有误时可直接用标签右侧的分类菜单移动。</div>
+    <div className="prompt-editor-note">保持必要标签在前，构图、场景和质量词只在需要时添加。输入两个字母即可查看 Danbooru 候选；分类有误时可直接用标签右侧的分类菜单移动。</div>
     <div className="prompt-section-list">{visibleSections.map((id) => {
       const definition = promptSectionDefinitions.find((section) => section.id === id)!;
       return <article className="prompt-section-card" key={id}>
         <header><div><h3>{definition.label}</h3><p>{definition.hint}</p></div>{definition.optional && <button onClick={() => setVisibleSections((current) => current.filter((item) => item !== id))}>收起</button>}</header>
-        <div className="prompt-tag-input"><input value={inputs[id] || ""} onChange={(event) => setInputs((current) => ({ ...current, [id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addInputTags(id); } }} placeholder={`添加${definition.label}标签…`} /><button onClick={() => addInputTags(id)}>添加</button></div>
+        <div className="prompt-tag-input"><input value={inputs[id] || ""} onFocus={() => setActiveSuggestionSection(id)} onBlur={() => setTimeout(() => setActiveSuggestionSection((current) => current === id ? null : current), 120)} onChange={(event) => { setInputs((current) => ({ ...current, [id]: event.target.value })); setActiveSuggestionSection(id); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addInputTags(id); } }} placeholder={`添加${definition.label}标签…`} /><button onClick={() => addInputTags(id)}>添加</button></div>
+        {activeSuggestionSection === id && !!tagSuggestions.length && <div className="prompt-tag-suggestions">{tagSuggestions.map((suggestion) => <button key={suggestion.name} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSuggestedTag(id, suggestion.name)}><span>{suggestion.name}</span><small>{suggestion.count.toLocaleString()} 张</small></button>)}</div>}
         {!sections[id].length ? <div className="prompt-section-empty">暂时留空，不会向最终 Prompt 添加任何内容。</div> : <div className="editable-tag-list">{sections[id].map((tag, index) => <div className={`${tag.enabled ? "" : "disabled"} ${counts[tag.text.trim().toLowerCase()] > 1 ? "duplicate" : ""}`} key={tag.id}>
           <button className="prompt-tag-toggle" onClick={() => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, enabled: !item.enabled } : item))}>{tag.enabled ? "✓" : "–"}</button>
           <input value={tag.text} onChange={(event) => updateSection(id, (current) => current.map((item) => item.id === tag.id ? { ...item, text: event.target.value } : item))} />

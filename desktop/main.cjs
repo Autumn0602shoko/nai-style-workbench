@@ -40,12 +40,13 @@ const createWindow = () => {
       `(async () => {
         if (typeof window.naiDesktop?.searchDanbooru !== "function") return { ready: false, reason: "bridge" };
         const suggestions = await window.naiDesktop.suggestDanbooru({ q: "hona", mode: "artist" });
+        const tagSuggestions = await window.naiDesktop.suggestDanbooru({ q: "pink_h", mode: "tag" });
         const data = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", tag: "honashi", page: 1 });
         const pageTwo = await window.naiDesktop.searchDanbooru({ q: "honashi", mode: "artist", tag: "honashi", page: 2 });
         const thumbnailReady = await new Promise((resolve) => { const image = new Image(); image.onload = () => resolve(true); image.onerror = () => resolve(false); image.src = data.posts[0]?.previewUrl || ""; });
         const character = await window.naiDesktop.searchDanbooru({ q: "mika_(blue_archive)", mode: "tag", page: 1 });
         const combo = await window.naiDesktop.searchDanbooru({ q: "", mode: "tag", combo: ["mika_(blue_archive)", "1girl"], page: 1 });
-        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && data.selectedTag === "honashi" && data.totalCount > 24 && data.posts.length > 0 && pageTwo.selectedTag === "honashi" && pageTwo.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, count: data.posts.length, totalCount: data.totalCount, pageTwoCount: pageTwo.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
+        return { ready: suggestions.length > 2 && suggestions.some((item) => item.name === "honashi") && tagSuggestions.some((item) => item.name === "pink_hair") && data.selectedTag === "honashi" && data.totalCount > 24 && data.posts.length > 0 && pageTwo.selectedTag === "honashi" && pageTwo.posts.length > 0 && data.posts.every((post) => post.previewUrl.startsWith("nai-image://")) && thumbnailReady && character.selectedTag === "mika_(blue_archive)" && character.posts.length > 0 && combo.selectedTag === "mika_(blue_archive) 1girl" && combo.posts.length > 0, suggestions: suggestions.length, tagSuggestions: tagSuggestions.length, count: data.posts.length, totalCount: data.totalCount, pageTwoCount: pageTwo.posts.length, thumbnailReady, characterTag: character.selectedTag, characterCount: character.posts.length, comboTag: combo.selectedTag, comboCount: combo.posts.length, prefix: data.posts[0]?.previewUrl.slice(0, 24) };
       })()`,
       );
       console.log("NAI_SMOKE_RESULT", JSON.stringify(result));
@@ -75,7 +76,7 @@ const setCached = (cache, key, value, maxEntries = 12) => {
 
 const fetchDanbooruResponse = async (url, timeoutMs = 18_000, retry = true) => {
   try {
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.10.1" }, signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.11.0" }, signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok && response.status >= 500 && retry) return fetchDanbooruResponse(url, 30_000, false);
     return response;
   } catch (error) {
@@ -170,7 +171,7 @@ app.whenReady().then(() => {
       const source = new URL(request.url).searchParams.get("url");
       const imageUrl = new URL(String(source));
       if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") return new Response(null, { status: 404 });
-      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.10.1" } });
+      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.11.0" } });
     } catch { return new Response(null, { status: 404 }); }
   });
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));

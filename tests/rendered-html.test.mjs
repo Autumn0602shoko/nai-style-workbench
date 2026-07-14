@@ -67,7 +67,10 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /nai-workbench-draft/);
   assert.match(page, /basket-drawer/);
   assert.match(page, /暂存已选/);
-  assert.match(page, /发送到编辑器并清空/);
+  assert.match(page, /发送当前篮并清空/);
+  assert.match(page, /新建小篮子/);
+  assert.match(promptEditor, /人物与角色/);
+  assert.match(promptEditor, /角色特征/);
   assert.match(promptEditor, /prompt-undo-toast/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

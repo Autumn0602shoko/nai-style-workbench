@@ -2,8 +2,9 @@
 
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseArtistTags } from "./artist-parser";
-import { importPromptTags } from "./prompt-import";
+import { importPromptTags, normalizePromptSections, normalizeVisiblePromptSections } from "./prompt-import";
 import { basicPromptSections, createEmptyPromptSections, createPromptTags, formatNegativePrompt, formatPromptSections, PromptSectionEditor, PromptSectionId, PromptSections } from "./prompt-section-editor";
+import { addTagsToActivePromptBasket, countAllPromptBasketTags, countPromptBasketTags, createPromptBasketState, getActivePromptBasket, normalizePromptBasketState, PromptBasketGroups, PromptBasketState, updateActivePromptBasketGroups } from "./prompt-baskets";
 import { createWeightExperiments } from "./weight-experiments";
 
 type Artist = { id: string; name: string; weight: number; enabled: boolean; locked?: boolean };
@@ -19,7 +20,6 @@ type Recipe = {
 };
 type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[]; characterTags: string[]; copyrightTags: string[]; metaTags: string[] };
 type DanbooruResult = { selectedTag: string | null; totalCount?: number; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
-type PromptBasket = Record<string, string[]>;
 type WorkbenchDraft = {
   version: 1;
   updatedAt: number;
@@ -96,7 +96,7 @@ export default function Home() {
   const [autocomplete, setAutocomplete] = useState<{ name: string; count: number }[]>([]);
   const [booruFilters, setBooruFilters] = useState<string[]>([]);
   const [activeCombo, setActiveCombo] = useState<string[]>([]);
-  const [promptBasket, setPromptBasket] = useState<PromptBasket>({});
+  const [promptBasket, setPromptBasket] = useState<PromptBasketState>(createPromptBasketState);
   const [basketOpen, setBasketOpen] = useState(false);
   const [activeView, setActiveView] = useState<"workbench" | "prompt" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
@@ -148,15 +148,15 @@ export default function Home() {
       setRecipes([]);
     }
     try { setFavorites(JSON.parse(localStorage.getItem("nai-style-favorites") || "[]")); } catch { setFavorites([]); }
-    try { setPromptBasket(JSON.parse(localStorage.getItem("nai-prompt-basket") || "{}")); } catch { setPromptBasket({}); }
+    try { setPromptBasket(normalizePromptBasketState(JSON.parse(localStorage.getItem("nai-prompt-basket") || "{}"))); } catch { setPromptBasket(createPromptBasketState()); }
     try {
       const draft = JSON.parse(localStorage.getItem("nai-workbench-draft") || "null") as WorkbenchDraft | null;
       if (draft?.version === 1 && draft.promptSections && Array.isArray(draft.visiblePromptSections)) {
         setRecipeName(draft.recipeName || "未命名画师串");
         setArtists(Array.isArray(draft.artists) ? draft.artists : []);
         setSuffix(draft.suffix || "");
-        setPromptSections(draft.promptSections);
-        setVisiblePromptSections(draft.visiblePromptSections.length ? draft.visiblePromptSections : basicPromptSections);
+        setPromptSections(normalizePromptSections(draft.promptSections));
+        setVisiblePromptSections(normalizeVisiblePromptSections(draft.visiblePromptSections));
         setPromptImportText(draft.promptImportText || "");
         setActiveRecipeId(draft.activeRecipeId || null);
         if (["workbench", "prompt", "danbooru", "favorites"].includes(draft.activeView)) setActiveView(draft.activeView);
@@ -283,8 +283,8 @@ export default function Home() {
     setRecipeName(recipe.name);
     setArtists(recipe.artists.map((artist) => ({ ...artist, id: uid() })));
     if (recipe.promptSections) {
-      setPromptSections(recipe.promptSections);
-      setVisiblePromptSections(recipe.visiblePromptSections || basicPromptSections);
+      setPromptSections(normalizePromptSections(recipe.promptSections));
+      setVisiblePromptSections(normalizeVisiblePromptSections(recipe.visiblePromptSections));
       setSuffix(recipe.suffix || "");
     } else {
       const migrated = createEmptyPromptSections();
@@ -435,30 +435,54 @@ export default function Home() {
     setNotice(`已把 ${tag} 加入组合查询`);
   };
 
-  const persistPromptBasket = (next: PromptBasket) => {
+  const persistPromptBasket = (next: PromptBasketState) => {
     setPromptBasket(next);
     localStorage.setItem("nai-prompt-basket", JSON.stringify(next));
   };
 
   const addToPromptBasket = (label: string, tags: string[]) => {
-    const previous = promptBasket[label] || [];
-    const nextTags = [...new Set([...previous, ...tags])];
-    const next = { ...promptBasket, [label]: nextTags };
+    const active = getActivePromptBasket(promptBasket);
+    const previous = active.groups[label] || [];
+    const next = addTagsToActivePromptBasket(promptBasket, label, tags);
+    const nextTags = getActivePromptBasket(next).groups[label] || [];
     persistPromptBasket(next);
     const added = nextTags.length - previous.length;
-    setNotice(added ? `已把 ${added} 项${label}标签加入暂存篮` : "这些标签已经在暂存篮中");
+    setNotice(added ? `已把 ${added} 项${label}标签加入「${active.name}」` : "这些标签已经在当前小篮子中");
   };
 
-  const clearPromptBasket = () => persistPromptBasket({});
+  const clearPromptBasket = () => persistPromptBasket(updateActivePromptBasketGroups(promptBasket, () => ({})));
   const removePromptBasketTag = (label: string, tag: string) => {
-    const remaining = (promptBasket[label] || []).filter((item) => item !== tag);
-    const next = { ...promptBasket };
-    if (remaining.length) next[label] = remaining;
-    else delete next[label];
-    persistPromptBasket(next);
+    persistPromptBasket(updateActivePromptBasketGroups(promptBasket, (groups) => {
+      const remaining = (groups[label] || []).filter((item) => item !== tag);
+      const next = { ...groups };
+      if (remaining.length) next[label] = remaining;
+      else delete next[label];
+      return next;
+    }));
   };
 
-  const basketTagCount = Object.values(promptBasket).reduce((total, tags) => total + tags.length, 0);
+  const activePromptBasket = getActivePromptBasket(promptBasket);
+  const basketTagCount = countPromptBasketTags(activePromptBasket);
+  const allBasketTagCount = countAllPromptBasketTags(promptBasket);
+
+  const createMiniBasket = () => {
+    const number = promptBasket.baskets.length + 1;
+    const id = `basket-${Date.now()}-${uid()}`;
+    persistPromptBasket({ ...promptBasket, baskets: [...promptBasket.baskets, { id, name: `小篮子 ${number}`, groups: {} }] });
+    setNotice(`已新建「小篮子 ${number}」，当前接收目标仍是「${activePromptBasket.name}」`);
+  };
+
+  const renameActiveBasket = (name: string) => persistPromptBasket({
+    ...promptBasket,
+    baskets: promptBasket.baskets.map((basket) => basket.id === activePromptBasket.id ? { ...basket, name: name.slice(0, 30) } : basket),
+  });
+
+  const deleteActiveBasket = () => {
+    if (promptBasket.baskets.length <= 1) return;
+    const baskets = promptBasket.baskets.filter((basket) => basket.id !== activePromptBasket.id);
+    persistPromptBasket({ ...promptBasket, activeId: baskets[0].id, baskets });
+    setNotice(`已删除「${activePromptBasket.name}」，现在启用「${baskets[0].name}」`);
+  };
 
   const addTagsToPromptSection = (id: PromptSectionId, tags: string[]) => {
     const readable = tags.map((tag) => tag.replace(/_/g, " ").trim()).filter(Boolean);
@@ -474,18 +498,20 @@ export default function Home() {
     if (label === "动作") return "action";
     if (label === "构图视角") return "composition";
     if (["作品", "成人内容", "分级与审查", "其他提示词", "元数据"].includes(label)) return "other";
+    if (["发色", "眼睛", "表情", "角色特征", "身体特征"].includes(label)) return "features";
     return "character";
   };
 
   const sendBasketToWorkbench = () => {
-    const basketArtists = (promptBasket["画师"] || []).map((tag) => tag.replace(/_/g, " "));
+    const groups = activePromptBasket.groups;
+    const basketArtists = (groups["画师"] || []).map((tag) => tag.replace(/_/g, " "));
     const newArtists = basketArtists.filter((name) => !artists.some((artist) => artist.name.toLowerCase() === name.toLowerCase()));
     setArtists((current) => [...current, ...newArtists.map((name) => ({ id: uid(), name, weight: 1, enabled: true }))]);
-    Object.entries(promptBasket).filter(([label]) => label !== "画师").forEach(([label, tags]) => addTagsToPromptSection(promptSectionForLabel(label), tags));
+    Object.entries(groups).filter(([label]) => label !== "画师").forEach(([label, tags]) => addTagsToPromptSection(promptSectionForLabel(label), tags));
     setActiveView("prompt");
-    persistPromptBasket({});
+    clearPromptBasket();
     setBasketOpen(false);
-    setNotice(`已发送 ${basketTagCount} 项并清空暂存篮`);
+    setNotice(`已发送「${activePromptBasket.name}」中的 ${basketTagCount} 项并清空该篮`);
   };
 
   const useDanbooruTag = (tag: string) => {
@@ -644,13 +670,13 @@ export default function Home() {
   const addSelectedTagsToBasket = () => {
     if (!selectedDetailTags.length) return;
     const selected = new Set(selectedDetailTags);
-    const next: PromptBasket = { ...promptBasket };
+    let groups: PromptBasketGroups = { ...activePromptBasket.groups };
     for (const [label, tags] of detailTagGroups) {
       const picked = tags.filter((tag) => selected.has(tag));
-      if (picked.length) next[label] = [...new Set([...(next[label] || []), ...picked])];
+      if (picked.length) groups = { ...groups, [label]: [...new Set([...(groups[label] || []), ...picked])] };
     }
-    persistPromptBasket(next);
-    setNotice(`已把选中的 ${selectedDetailTags.length} 项标签加入暂存篮`);
+    persistPromptBasket(updateActivePromptBasketGroups(promptBasket, () => groups));
+    setNotice(`已把选中的 ${selectedDetailTags.length} 项标签加入「${activePromptBasket.name}」`);
   };
 
   return (
@@ -668,16 +694,18 @@ export default function Home() {
         </nav>
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
-          <button className={`basket-toggle ${basketTagCount ? "has-items" : ""}`} onClick={() => setBasketOpen((current) => !current)}>暂存篮<span>{basketTagCount}</span></button>
+          <button className={`basket-toggle ${allBasketTagCount ? "has-items" : ""}`} onClick={() => setBasketOpen((current) => !current)}>暂存篮<span>{allBasketTagCount}</span></button>
           {activeView === "workbench" && <><button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setPromptSections(createEmptyPromptSections()); setVisiblePromptSections(basicPromptSections); setSuffix(""); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
           <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button></>}
         </div>
       </header>
 
       {basketOpen && <><button className="basket-backdrop" aria-label="关闭 Tag 暂存篮" onClick={() => setBasketOpen(false)} /><aside className="basket-drawer" role="dialog" aria-label="Tag 暂存篮">
-        <header><div><strong>Tag 暂存篮</strong><span>{basketTagCount ? `${basketTagCount} 项 · 自动保存在本机` : "从 Danbooru 预览中暂存需要的标签"}</span></div><button aria-label="关闭 Tag 暂存篮" onClick={() => setBasketOpen(false)}>×</button></header>
-        <div className="basket-drawer-body">{basketTagCount ? <div className="basket-drawer-groups">{Object.entries(promptBasket).filter(([, tags]) => tags.length).map(([label, tags]) => <section key={label}><header><b>{label}</b><small>{tags.length} 项</small></header><div>{tags.map((tag) => <span key={tag}>{tag}<button aria-label={`从暂存篮移除 ${tag}`} onClick={() => removePromptBasketTag(label, tag)}>×</button></span>)}</div></section>)}</div> : <div className="basket-drawer-empty"><b>暂存篮还是空的</b><span>在作品预览框中点击标签右侧的“＋”，或使用分类旁的“＋ 暂存”。</span><button onClick={() => { setBasketOpen(false); setActiveView("danbooru"); }}>前往 Danbooru 画廊</button></div>}</div>
-        <footer><button className="clear" disabled={!basketTagCount} onClick={clearPromptBasket}>清空</button><button className="send" disabled={!basketTagCount} onClick={sendBasketToWorkbench}>发送到编辑器并清空</button></footer>
+        <header><div><strong>Tag 小篮子</strong><span>仅有一个接收目标 · 共暂存 {allBasketTagCount} 项</span></div><button aria-label="关闭 Tag 暂存篮" onClick={() => setBasketOpen(false)}>×</button></header>
+        <div className="basket-tabs"><div>{promptBasket.baskets.map((basket) => <button className={basket.id === activePromptBasket.id ? "active" : ""} key={basket.id} onClick={() => persistPromptBasket({ ...promptBasket, activeId: basket.id })}><span>{basket.name}</span><small>{countPromptBasketTags(basket)}</small></button>)}</div><button className="basket-create" onClick={createMiniBasket}>＋ 新建小篮子</button></div>
+        <div className="basket-active-settings"><label><span>当前启用</span><input value={activePromptBasket.name} onChange={(event) => renameActiveBasket(event.target.value)} /></label><span>新标签会进入这个小篮子</span><button disabled={promptBasket.baskets.length <= 1} onClick={deleteActiveBasket}>删除此篮</button></div>
+        <div className="basket-drawer-body">{basketTagCount ? <div className="basket-drawer-groups">{Object.entries(activePromptBasket.groups).filter(([, tags]) => tags.length).map(([label, tags]) => <section key={label}><header><b>{label}</b><small>{tags.length} 项</small></header><div>{tags.map((tag) => <span key={tag}>{tag}<button aria-label={`从暂存篮移除 ${tag}`} onClick={() => removePromptBasketTag(label, tag)}>×</button></span>)}</div></section>)}</div> : <div className="basket-drawer-empty"><b>这个小篮子还是空的</b><span>在作品预览框中点击标签右侧的“＋”，标签就会进入当前启用的小篮子。</span><button onClick={() => { setBasketOpen(false); setActiveView("danbooru"); }}>前往 Danbooru 画廊</button></div>}</div>
+        <footer><button className="clear" disabled={!basketTagCount} onClick={clearPromptBasket}>清空当前篮</button><button className="send" disabled={!basketTagCount} onClick={sendBasketToWorkbench}>发送当前篮并清空</button></footer>
       </aside></>}
 
       {activeView === "danbooru" && <section className="gallery-page">

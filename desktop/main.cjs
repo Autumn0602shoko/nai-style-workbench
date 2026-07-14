@@ -105,7 +105,7 @@ const setCached = (cache, key, value, maxEntries = 12) => {
 
 const fetchDanbooruResponse = async (url, timeoutMs = 18_000, retry = true) => {
   try {
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.16.0" }, signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.17.0" }, signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok && response.status >= 500 && retry) return fetchDanbooruResponse(url, 30_000, false);
     return response;
   } catch (error) {
@@ -200,7 +200,7 @@ app.whenReady().then(() => {
       const source = new URL(request.url).searchParams.get("url");
       const imageUrl = new URL(String(source));
       if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "cdn.donmai.us") return new Response(null, { status: 404 });
-      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.16.0" } });
+      return net.fetch(imageUrl.toString(), { headers: { "User-Agent": "NAI-Style-Workbench/0.17.0" } });
     } catch { return new Response(null, { status: 404 }); }
   });
   ipcMain.handle("danbooru:search", async (_event, request) => fetchDanbooru(request));
@@ -227,7 +227,7 @@ app.whenReady().then(() => {
   ipcMain.handle("danbooru:image", async (_event, value) => {
     const url = new URL(String(value));
     if (url.protocol !== "https:" || url.hostname !== "cdn.donmai.us") throw new Error("不支持的图片地址");
-    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.16.0" }, signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.17.0" }, signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`图片加载失败 ${response.status}`);
     const type = response.headers.get("content-type") || "image/jpeg";
     return `data:${type};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;

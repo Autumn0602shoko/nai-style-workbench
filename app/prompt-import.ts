@@ -8,7 +8,7 @@ export type ImportedPromptTag = {
 
 const subjectWords = /^(?:solo|1girl|1boy|2girls|2boys|3girls|3boys|4girls|4boys|multiple_girls|multiple_boys|male_focus|female_focus)$/;
 const clothingWords = /dress|shirt|skirt|pants|shorts|uniform|jacket|coat|sleeve|shoes|boots|hat|gloves|swimsuit|bikini|lingerie|clothes|hoodie|kimono|armor|stockings|thighhighs|pantyhose|bra|necktie|ribbon|collar|choker|apron|robe|sweater|cardigan|socks|footwear|bare_shoulders|off_shoulder|cleavage|navel|midriff/;
-const characterWords = /(?:black|brown|blonde|yellow|red|orange|green|blue|purple|pink|white|grey|gray|silver|aqua|multicolored|two-tone)_hair|(?:black|brown|yellow|red|orange|green|blue|purple|pink|white|grey|gray|aqua|heterochromia)_eyes|closed_eyes|one_eye_closed|blush|smile|smiling|grin|open_mouth|closed_mouth|frown|crying|tears|angry|surprised|embarrassed|expressionless|tongue|winking|long_hair|short_hair|medium_hair|very_long_hair|twintails|ponytail|braid|bangs|ahoge|hair_between_eyes|hair_ornament|bald|animal_ears|cat_ears|fox_ears|dog_ears|horns|tail|wings|fang|freckles|mole|dark_skin|dark-skinned|dark_skinned|pale_skin|tan|muscular|petite|curvy|glasses|breasts|flat_chest|nipples|thighs|legs|armpits/;
+const featureWords = /(?:black|brown|blonde|yellow|red|orange|green|blue|purple|pink|white|grey|gray|silver|aqua|multicolored|two-tone)_hair|(?:black|brown|yellow|red|orange|green|blue|purple|pink|white|grey|gray|aqua|heterochromia)_eyes|closed_eyes|one_eye_closed|blush|smile|smiling|grin|open_mouth|closed_mouth|frown|crying|tears|angry|surprised|embarrassed|expressionless|tongue|winking|long_hair|short_hair|medium_hair|very_long_hair|twintails|ponytail|braid|bangs|ahoge|hair_between_eyes|hair_ornament|bald|animal_ears|cat_ears|fox_ears|dog_ears|horns|tail|wings|fang|freckles|mole|dark_skin|dark-skinned|dark_skinned|pale_skin|tan|muscular|petite|curvy|glasses|breasts|flat_chest|nipples|thighs|legs|armpits/;
 const actionWords = /sitting|standing|walking|running|lying|looking|holding|fighting|dancing|jumping|kneeling|pose|reaching|sleeping|eating|drinking|grabbing|pulling|hugging|kissing|arms_|hand_on|hands_on|head_tilt/;
 const compositionWords = /focus|foreshortening|perspective|view|angle|close-up|close_up|upper_body|lower_body|full_body|cowboy_shot|portrait|from_above|from_below|dutch_angle|depth_of_field|cropped|out_of_frame|wide_shot/;
 const sceneWords = /background|indoors|outdoors|city|street|room|bedroom|classroom|school|beach|forest|ocean|sky|cloud|sunset|sunrise|night|day|weather|rain|snow|wind|garden|park|building|window|door|landscape/;
@@ -55,12 +55,41 @@ const parseWeightedTag = (value: string) => {
 export function classifyPromptTag(value: string): PromptSectionId {
   const tag = value.trim().toLowerCase().replace(/\s+/g, "_");
   if (clothingWords.test(tag)) return "clothing";
-  if (subjectWords.test(tag) || characterWords.test(tag) || /_\([^)]+\)$/.test(tag)) return "character";
+  if (subjectWords.test(tag) || /_\([^)]+\)$/.test(tag)) return "character";
+  if (featureWords.test(tag)) return "features";
   if (actionWords.test(tag)) return "action";
   if (compositionWords.test(tag)) return "composition";
   if (sceneWords.test(tag)) return "scene";
   if (qualityWords.test(tag)) return "quality";
   return "other";
+}
+
+const sectionIds: PromptSectionId[] = ["character", "features", "clothing", "action", "composition", "scene", "quality", "other", "negative"];
+const baseSectionIds: PromptSectionId[] = ["character", "features", "clothing", "action"];
+
+/** Restore old drafts and recipes into the current complete section shape. */
+export function normalizePromptSections(source: unknown): PromptSections {
+  const result = Object.fromEntries(sectionIds.map((id) => [id, []])) as unknown as PromptSections;
+  if (!source || typeof source !== "object") return result;
+  const record = source as Partial<Record<PromptSectionId, unknown>>;
+  for (const id of sectionIds) {
+    if (!Array.isArray(record[id])) continue;
+    result[id] = record[id]!.filter((tag): tag is PromptSections[PromptSectionId][number] => Boolean(tag && typeof tag === "object" && typeof (tag as { text?: unknown }).text === "string"));
+  }
+  if (!Array.isArray(record.features) && result.character.length) {
+    const identity: typeof result.character = [];
+    for (const tag of result.character) {
+      if (classifyPromptTag(tag.text) === "features") result.features.push(tag);
+      else identity.push(tag);
+    }
+    result.character = identity;
+  }
+  return result;
+}
+
+export function normalizeVisiblePromptSections(source: unknown): PromptSectionId[] {
+  const visible = Array.isArray(source) ? source.filter((id): id is PromptSectionId => typeof id === "string" && sectionIds.includes(id as PromptSectionId)) : [];
+  return [...baseSectionIds, ...visible.filter((id) => !baseSectionIds.includes(id))];
 }
 
 /** Parse a positive NovelAI Prompt while preserving its order and emphasis. */

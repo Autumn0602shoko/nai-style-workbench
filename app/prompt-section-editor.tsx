@@ -4,12 +4,13 @@ import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useRef, useS
 import { movePromptTagToSection } from "./prompt-import";
 import { getBuiltInTranslationCount, normalizeTranslationKey, translateDanbooruTag } from "./tag-translation";
 
-export type PromptSectionId = "character" | "clothing" | "action" | "composition" | "scene" | "quality" | "other" | "negative";
+export type PromptSectionId = "character" | "features" | "clothing" | "action" | "composition" | "scene" | "quality" | "other" | "negative";
 export type PromptTag = { id: string; text: string; weight: number; enabled: boolean };
 export type PromptSections = Record<PromptSectionId, PromptTag[]>;
 
 export const promptSectionDefinitions: { id: PromptSectionId; label: string; hint: string; optional?: boolean }[] = [
-  { id: "character", label: "角色与外貌", hint: "人物数量、角色名、发色、眼睛、表情等" },
+  { id: "character", label: "人物与角色", hint: "人物数量与角色名，例如 1girl、hina_(blue_archive)" },
+  { id: "features", label: "角色特征", hint: "发色、眼睛、表情、体型与角色特征" },
   { id: "clothing", label: "人物衣着", hint: "服装、配饰、鞋袜等" },
   { id: "action", label: "动作与姿态", hint: "动作、姿势、视线和角色互动" },
   { id: "composition", label: "构图与视角", hint: "镜头、景别、角度和画面焦点", optional: true },
@@ -19,11 +20,11 @@ export const promptSectionDefinitions: { id: PromptSectionId; label: string; hin
   { id: "negative", label: "Undesired Content", hint: "希望模型避免出现的内容", optional: true },
 ];
 
-export const basicPromptSections: PromptSectionId[] = ["character", "clothing", "action"];
-const positiveOrder: PromptSectionId[] = ["character", "clothing", "action", "composition", "scene", "quality", "other"];
+export const basicPromptSections: PromptSectionId[] = ["character", "features", "clothing", "action"];
+const positiveOrder: PromptSectionId[] = ["character", "features", "clothing", "action", "composition", "scene", "quality", "other"];
 const makeId = () => Math.random().toString(36).slice(2, 10);
 
-export const createEmptyPromptSections = (): PromptSections => ({ character: [], clothing: [], action: [], composition: [], scene: [], quality: [], other: [], negative: [] });
+export const createEmptyPromptSections = (): PromptSections => ({ character: [], features: [], clothing: [], action: [], composition: [], scene: [], quality: [], other: [], negative: [] });
 export const createPromptTags = (tags: string[]): PromptTag[] => [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))].map((text) => ({ id: makeId(), text, weight: 1, enabled: true }));
 
 const formatTag = (tag: PromptTag) => tag.weight === 1 ? tag.text.trim() : `${Number(tag.weight.toFixed(2))}::${tag.text.trim()}::`;

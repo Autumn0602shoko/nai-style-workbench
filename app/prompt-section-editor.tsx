@@ -76,6 +76,9 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const [translationLookupLoading, setTranslationLookupLoading] = useState(false);
   const [translationLookupStatus, setTranslationLookupStatus] = useState("");
   const [translationLookupRevision, setTranslationLookupRevision] = useState(0);
+  const [bulkTranslationLoading, setBulkTranslationLoading] = useState(false);
+  const [bulkTranslationProgress, setBulkTranslationProgress] = useState({ done: 0, total: 0 });
+  const [bulkTranslationStatus, setBulkTranslationStatus] = useState("");
   const [undoDeletion, setUndoDeletion] = useState<{ sections: PromptSections; message: string } | null>(null);
   const suggestionRequest = useRef(0);
   const translationRequest = useRef(0);
@@ -86,6 +89,8 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   }, {}), [sections]);
   const allTagIds = useMemo(() => visibleSections.flatMap((id) => sections[id].map((tag) => tag.id)), [sections, visibleSections]);
   const mergedTranslations = useMemo(() => ({ ...onlineTranslations, ...customTranslations }), [onlineTranslations, customTranslations]);
+  const editorTags = useMemo(() => [...new Set(Object.values(sections).flat().map((tag) => tag.text.trim()).filter(Boolean))], [sections]);
+  const untranslatedEditorTags = useMemo(() => editorTags.filter((tag) => !translateDanbooruTag(tag, mergedTranslations)), [editorTags, mergedTranslations]);
 
   const updateSection = (id: PromptSectionId, updater: (tags: PromptTag[]) => PromptTag[]) => setSections((current) => ({ ...current, [id]: updater(current[id]) }));
   const addValues = (id: PromptSectionId, values: string[]) => updateSection(id, (current) => {
@@ -136,6 +141,42 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     if (!key || !translation) return;
     persistCustomTranslations({ ...customTranslations, [key]: translation });
     setTranslationLookupStatus("已保存并应用到当前提示词");
+  };
+  const translateCurrentEditorTags = async () => {
+    if (!lookupTranslation || bulkTranslationLoading || !untranslatedEditorTags.length) return;
+    const pending = [...untranslatedEditorTags];
+    const nextTranslations = { ...customTranslations };
+    let translated = 0;
+    let finished = 0;
+    setBulkTranslationLoading(true);
+    setBulkTranslationProgress({ done: 0, total: pending.length });
+    setBulkTranslationStatus("正在联网补充当前编辑器中的未翻译标签…");
+    const worker = async () => {
+      while (pending.length) {
+        const tag = pending.shift();
+        if (!tag) return;
+        try {
+          const result = await lookupTranslation(tag);
+          const translation = result.candidates[0]?.trim();
+          const key = normalizeTranslationKey(tag);
+          if (key && translation) {
+            nextTranslations[key] = translation;
+            translated += 1;
+          }
+        } catch {
+          // A failed tag should not stop the remaining editor labels.
+        } finally {
+          finished += 1;
+          setBulkTranslationProgress({ done: finished, total: untranslatedEditorTags.length });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, pending.length) }, () => worker()));
+    if (translated) persistCustomTranslations(nextTranslations);
+    setBulkTranslationLoading(false);
+    setBulkTranslationStatus(translated
+      ? `已新增 ${translated} 条翻译${translated < untranslatedEditorTags.length ? `，另有 ${untranslatedEditorTags.length - translated} 条暂未找到` : ""}`
+      : "暂时没有找到新的中文释义，可以稍后重试或手动补充");
   };
   const openTranslationDictionary = (tag = "") => {
     const key = normalizeTranslationKey(tag);
@@ -267,6 +308,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     {dictionaryOpen && <aside className="translation-float" role="dialog" aria-label="翻译小词典">
       <header><div><strong>翻译小词典</strong><span>联网查找当前 Danbooru 标签</span></div><button aria-label="关闭翻译小词典" onClick={() => setDictionaryOpen(false)}>×</button></header>
       <div className="translation-float-body">
+        <div className={`translation-bulk ${bulkTranslationLoading ? "loading" : ""}`}><div><strong>当前提示词编辑器</strong><span>{editorTags.length} 个标签 · {untranslatedEditorTags.length} 个待翻译</span></div><button disabled={!lookupTranslation || bulkTranslationLoading || !untranslatedEditorTags.length} onClick={() => void translateCurrentEditorTags()}>{bulkTranslationLoading ? `翻译中 ${bulkTranslationProgress.done}/${bulkTranslationProgress.total}` : untranslatedEditorTags.length ? "一键翻译当前标签" : "已全部翻译"}</button>{bulkTranslationStatus && <p>{bulkTranslationStatus}</p>}</div>
         <label>英文标签<input autoFocus value={dictionaryTag} onChange={(event) => { setDictionaryTag(event.target.value); setDictionaryTranslation(""); setTranslationCandidates([]); }} placeholder="例如 stocking" /></label>
         <div className={`translation-lookup-state ${translationLookupLoading ? "loading" : ""}`}><span>{translationLookupStatus || "输入标签后会自动联网查找"}</span><button disabled={translationLookupLoading || dictionaryTag.trim().length < 2 || !lookupTranslation} onClick={() => setTranslationLookupRevision((current) => current + 1)}>重新查找</button></div>
         {!!translationCandidates.length && <div className="translation-candidates">{translationCandidates.map((candidate) => <button className={dictionaryTranslation === candidate ? "active" : ""} key={candidate} onClick={() => setDictionaryTranslation(candidate)}>{candidate}</button>)}</div>}

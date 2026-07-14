@@ -62,6 +62,8 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(promptEditor, /nai-online-tag-translations/);
   assert.match(promptEditor, /联网更新/);
   assert.match(promptEditor, /translation-float/);
+  assert.match(promptEditor, /一键翻译当前标签/);
+  assert.match(promptEditor, /translateCurrentEditorTags/);
   assert.match(promptEditor, /lookupTranslation/);
   assert.match(page, /lookupTagTranslation/);
   assert.match(page, /nai-workbench-draft/);

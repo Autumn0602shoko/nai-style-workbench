@@ -284,6 +284,14 @@ main { min-height:100vh; padding-bottom:64px; }
 .translation-float>header span { color:#978a9f; font-size:9px; }
 .translation-float>header>button { width:28px; height:28px; border:0; border-radius:50%; background:#ebe5f0; color:#74677d; font-size:16px; }
 .translation-float-body { display:flex; flex-direction:column; gap:10px; max-height:calc(min(620px,100vh - 36px) - 54px); overflow:auto; padding:13px 14px 14px; }
+.translation-bulk { display:grid; grid-template-columns:1fr auto; align-items:center; gap:7px 10px; padding:10px; border:1px solid #ddd2e7; border-radius:9px; background:#faf7ff; }
+.translation-bulk>div { display:flex; min-width:0; flex-direction:column; gap:2px; }
+.translation-bulk strong { color:#5f4a70; font-size:10px; }
+.translation-bulk span { color:#94869e; font-size:8px; }
+.translation-bulk>button { min-height:32px; padding:0 10px; border:1px solid #8d70a7; border-radius:7px; background:#76578e; color:#fff; font-size:9px; font-weight:800; white-space:nowrap; }
+.translation-bulk>button:disabled { border-color:#d2cad8; background:#ebe7ee; color:#9a919f; }
+.translation-bulk.loading>button { background:#65477d; }
+.translation-bulk>p { grid-column:1/-1; margin:0; color:#887791; font-size:8px; line-height:1.5; }
 .translation-float-body>label { display:flex; flex-direction:column; gap:5px; color:#786b82; font-size:9px; font-weight:800; }
 .translation-float-body>label input { width:100%; min-height:38px; padding:0 10px; border:1px solid #d8d0df; border-radius:7px; color:#3e4655; font-size:12px; outline:none; }
 .translation-float-body>label input:focus { border-color:#9279ad; box-shadow:0 0 0 2px #9a7fbb1e; }

@@ -20,6 +20,18 @@ type Recipe = {
 type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[]; characterTags: string[]; copyrightTags: string[]; metaTags: string[] };
 type DanbooruResult = { selectedTag: string | null; totalCount?: number; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
 type PromptBasket = Record<string, string[]>;
+type WorkbenchDraft = {
+  version: 1;
+  updatedAt: number;
+  recipeName: string;
+  artists: Artist[];
+  suffix: string;
+  promptSections: PromptSections;
+  visiblePromptSections: PromptSectionId[];
+  promptImportText: string;
+  activeRecipeId: string | null;
+  activeView: "workbench" | "prompt" | "danbooru" | "favorites";
+};
 type OnlineTagDictionary = { version: string; updatedAt: string; entries: Record<string, string> };
 type TranslationLookupResult = { candidates: string[]; source: string };
 
@@ -85,6 +97,7 @@ export default function Home() {
   const [booruFilters, setBooruFilters] = useState<string[]>([]);
   const [activeCombo, setActiveCombo] = useState<string[]>([]);
   const [promptBasket, setPromptBasket] = useState<PromptBasket>({});
+  const [basketOpen, setBasketOpen] = useState(false);
   const [activeView, setActiveView] = useState<"workbench" | "prompt" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
@@ -96,6 +109,7 @@ export default function Home() {
   const detailRequestId = useRef(0);
   const importRecipesRef = useRef<HTMLInputElement>(null);
   const autocompleteCache = useRef(new Map<string, { name: string; count: number }[]>());
+  const draftHydrated = useRef(false);
 
   const suggestDanbooruTags = useCallback(async (query: string, mode: "artist" | "tag" = "tag") => {
     const cacheKey = `${mode}:${query.toLowerCase().replace(/\s+/g, "_")}`;
@@ -135,7 +149,43 @@ export default function Home() {
     }
     try { setFavorites(JSON.parse(localStorage.getItem("nai-style-favorites") || "[]")); } catch { setFavorites([]); }
     try { setPromptBasket(JSON.parse(localStorage.getItem("nai-prompt-basket") || "{}")); } catch { setPromptBasket({}); }
+    try {
+      const draft = JSON.parse(localStorage.getItem("nai-workbench-draft") || "null") as WorkbenchDraft | null;
+      if (draft?.version === 1 && draft.promptSections && Array.isArray(draft.visiblePromptSections)) {
+        setRecipeName(draft.recipeName || "未命名画师串");
+        setArtists(Array.isArray(draft.artists) ? draft.artists : []);
+        setSuffix(draft.suffix || "");
+        setPromptSections(draft.promptSections);
+        setVisiblePromptSections(draft.visiblePromptSections.length ? draft.visiblePromptSections : basicPromptSections);
+        setPromptImportText(draft.promptImportText || "");
+        setActiveRecipeId(draft.activeRecipeId || null);
+        if (["workbench", "prompt", "danbooru", "favorites"].includes(draft.activeView)) setActiveView(draft.activeView);
+        setNotice("已恢复上次未完成的草稿");
+      }
+    } catch {
+      localStorage.removeItem("nai-workbench-draft");
+    } finally {
+      draftHydrated.current = true;
+    }
   }, []);
+
+  useEffect(() => {
+    if (!draftHydrated.current) return;
+    const persistDraft = () => {
+      const draft: WorkbenchDraft = { version: 1, updatedAt: Date.now(), recipeName, artists, suffix, promptSections, visiblePromptSections, promptImportText, activeRecipeId, activeView };
+      localStorage.setItem("nai-workbench-draft", JSON.stringify(draft));
+    };
+    const timer = setTimeout(persistDraft, 500);
+    window.addEventListener("pagehide", persistDraft);
+    return () => { clearTimeout(timer); window.removeEventListener("pagehide", persistDraft); };
+  }, [recipeName, artists, suffix, promptSections, visiblePromptSections, promptImportText, activeRecipeId, activeView]);
+
+  useEffect(() => {
+    if (!basketOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setBasketOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [basketOpen]);
 
   useEffect(() => {
     const query = booruQuery.trim();
@@ -391,12 +441,22 @@ export default function Home() {
   };
 
   const addToPromptBasket = (label: string, tags: string[]) => {
-    const next = { ...promptBasket, [label]: [...new Set([...(promptBasket[label] || []), ...tags])] };
+    const previous = promptBasket[label] || [];
+    const nextTags = [...new Set([...previous, ...tags])];
+    const next = { ...promptBasket, [label]: nextTags };
     persistPromptBasket(next);
-    setNotice(`已把 ${tags.length} 项${label}标签加入暂存篮`);
+    const added = nextTags.length - previous.length;
+    setNotice(added ? `已把 ${added} 项${label}标签加入暂存篮` : "这些标签已经在暂存篮中");
   };
 
   const clearPromptBasket = () => persistPromptBasket({});
+  const removePromptBasketTag = (label: string, tag: string) => {
+    const remaining = (promptBasket[label] || []).filter((item) => item !== tag);
+    const next = { ...promptBasket };
+    if (remaining.length) next[label] = remaining;
+    else delete next[label];
+    persistPromptBasket(next);
+  };
 
   const basketTagCount = Object.values(promptBasket).reduce((total, tags) => total + tags.length, 0);
 
@@ -413,7 +473,7 @@ export default function Home() {
     if (label === "人物衣着") return "clothing";
     if (label === "动作") return "action";
     if (label === "构图视角") return "composition";
-    if (["成人内容", "分级与审查", "其他提示词"].includes(label)) return "other";
+    if (["作品", "成人内容", "分级与审查", "其他提示词", "元数据"].includes(label)) return "other";
     return "character";
   };
 
@@ -421,9 +481,11 @@ export default function Home() {
     const basketArtists = (promptBasket["画师"] || []).map((tag) => tag.replace(/_/g, " "));
     const newArtists = basketArtists.filter((name) => !artists.some((artist) => artist.name.toLowerCase() === name.toLowerCase()));
     setArtists((current) => [...current, ...newArtists.map((name) => ({ id: uid(), name, weight: 1, enabled: true }))]);
-    Object.entries(promptBasket).filter(([label]) => label !== "画师" && label !== "元数据").forEach(([label, tags]) => addTagsToPromptSection(promptSectionForLabel(label), tags));
+    Object.entries(promptBasket).filter(([label]) => label !== "画师").forEach(([label, tags]) => addTagsToPromptSection(promptSectionForLabel(label), tags));
     setActiveView("prompt");
-    setNotice(`已把暂存篮中的 ${basketTagCount} 项标签发送到提示词编辑器`);
+    persistPromptBasket({});
+    setBasketOpen(false);
+    setNotice(`已发送 ${basketTagCount} 项并清空暂存篮`);
   };
 
   const useDanbooruTag = (tag: string) => {
@@ -579,6 +641,18 @@ export default function Home() {
     ["元数据", focusedPost.metaTags],
   ] : [];
 
+  const addSelectedTagsToBasket = () => {
+    if (!selectedDetailTags.length) return;
+    const selected = new Set(selectedDetailTags);
+    const next: PromptBasket = { ...promptBasket };
+    for (const [label, tags] of detailTagGroups) {
+      const picked = tags.filter((tag) => selected.has(tag));
+      if (picked.length) next[label] = [...new Set([...(next[label] || []), ...picked])];
+    }
+    persistPromptBasket(next);
+    setNotice(`已把选中的 ${selectedDetailTags.length} 项标签加入暂存篮`);
+  };
+
   return (
     <main>
       <header className="topbar">
@@ -594,10 +668,17 @@ export default function Home() {
         </nav>
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
+          <button className={`basket-toggle ${basketTagCount ? "has-items" : ""}`} onClick={() => setBasketOpen((current) => !current)}>暂存篮<span>{basketTagCount}</span></button>
           {activeView === "workbench" && <><button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setPromptSections(createEmptyPromptSections()); setVisiblePromptSections(basicPromptSections); setSuffix(""); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
           <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button></>}
         </div>
       </header>
+
+      {basketOpen && <><button className="basket-backdrop" aria-label="关闭 Tag 暂存篮" onClick={() => setBasketOpen(false)} /><aside className="basket-drawer" role="dialog" aria-label="Tag 暂存篮">
+        <header><div><strong>Tag 暂存篮</strong><span>{basketTagCount ? `${basketTagCount} 项 · 自动保存在本机` : "从 Danbooru 预览中暂存需要的标签"}</span></div><button aria-label="关闭 Tag 暂存篮" onClick={() => setBasketOpen(false)}>×</button></header>
+        <div className="basket-drawer-body">{basketTagCount ? <div className="basket-drawer-groups">{Object.entries(promptBasket).filter(([, tags]) => tags.length).map(([label, tags]) => <section key={label}><header><b>{label}</b><small>{tags.length} 项</small></header><div>{tags.map((tag) => <span key={tag}>{tag}<button aria-label={`从暂存篮移除 ${tag}`} onClick={() => removePromptBasketTag(label, tag)}>×</button></span>)}</div></section>)}</div> : <div className="basket-drawer-empty"><b>暂存篮还是空的</b><span>在作品预览框中点击标签右侧的“＋”，或使用分类旁的“＋ 暂存”。</span><button onClick={() => { setBasketOpen(false); setActiveView("danbooru"); }}>前往 Danbooru 画廊</button></div>}</div>
+        <footer><button className="clear" disabled={!basketTagCount} onClick={clearPromptBasket}>清空</button><button className="send" disabled={!basketTagCount} onClick={sendBasketToWorkbench}>发送到编辑器并清空</button></footer>
+      </aside></>}
 
       {activeView === "danbooru" && <section className="gallery-page">
         <div className="gallery-title"><div><p className="eyebrow">DANBOORU EXPLORER</p><h2>画师与提示词参考画廊</h2><p>查询标签、浏览作品，并把画师或提示词送回工作台。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>返回工作台</button></div>
@@ -615,7 +696,6 @@ export default function Home() {
           {booruResult?.error && <div className="booru-error">{booruResult.error}</div>}
           {!!booruResult?.suggestions.length && <div className="booru-suggestions">{booruResult.suggestions.map((tag) => <button className={tag.name === booruResult.selectedTag ? "active" : ""} key={tag.name} onClick={() => searchDanbooru(tag.name)}>{tag.name}<small>{tag.count.toLocaleString()}</small></button>)}</div>}
           {booruResult?.selectedTag && <div className="booru-selected"><span>当前：{booruResult.selectedTag}</span><button onClick={() => useDanbooruTag(booruResult.selectedTag!)}>{booruMode === "artist" ? "＋ 加入画师串" : "＋ 加入提示词"}</button></div>}
-          <div className="prompt-basket"><div className="basket-heading"><div><strong>提示词暂存篮</strong><span>{basketTagCount ? `${basketTagCount} 项，已在本机保存` : "从作品预览框加入分类标签"}</span></div><div><button disabled={!basketTagCount} onClick={sendBasketToWorkbench}>发送到工作台</button><button disabled={!basketTagCount} onClick={clearPromptBasket}>清空</button></div></div>{!!basketTagCount && <div className="basket-groups">{Object.entries(promptBasket).filter(([, tags]) => tags.length).map(([label, tags]) => <section key={label}><b>{label}</b><div>{tags.map((tag) => <button key={tag} onClick={() => persistPromptBasket({ ...promptBasket, [label]: tags.filter((item) => item !== tag) })}>{tag}<span>×</span></button>)}</div></section>)}</div>}</div>
           {!!booruResult?.posts.length && <><div className="booru-grid">{booruResult.posts.map((post) => <article className="booru-card" key={post.id} onMouseEnter={(event) => { keepPostOpen(); showPost(post, false, event.currentTarget); }} onMouseLeave={() => schedulePostClose(post.id)}><button className={`favorite-star ${favorites.some((item) => item.id === post.id) ? "active" : ""}`} aria-label="收藏作品" onClick={(event) => { event.stopPropagation(); toggleFavorite(post); }}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`${booruResult.selectedTag} 参考图`} loading="lazy" /><span>#{post.id} · {post.rating.toUpperCase()}</span></button></article>)}</div><div className="booru-pages"><button disabled={booruPage === 1 || booruLoading} onClick={() => searchBooruPage(1)}>首页</button><button disabled={booruPage === 1 || booruLoading} onClick={() => searchBooruPage(booruPage - 1)}>上一页</button><label>第 <input type="number" min="1" max={totalBooruPages} value={booruPageInput} onChange={(event) => setBooruPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") jumpBooruPage(); }} /> / {totalBooruPages} 页</label><button disabled={booruLoading} onClick={jumpBooruPage}>跳转</button><button disabled={booruLoading || booruPage >= totalBooruPages} onClick={() => searchBooruPage(booruPage + 1)}>下一页</button></div></>}
           {!booruResult && <div className="booru-intro">查询 Danbooru 的画师标签和提示词参考图。图片版权归原作者，点击缩略图可查看原帖。</div>}
         </section>
@@ -624,7 +704,7 @@ export default function Home() {
       {activeView === "favorites" && <section className="gallery-page"><div className="gallery-title"><div><p className="eyebrow">LOCAL FAVORITES</p><h2>收藏的参考作品</h2><p>收藏仅保存在当前设备。</p></div></div>{favorites.length ? <div className="favorite-grid">{favorites.map((post) => <article className="favorite-card" key={post.id}><button className="favorite-star active" onClick={() => toggleFavorite(post)}>★</button><button className="booru-image-button" onClick={(event) => showPost(post, true, event.currentTarget.parentElement || event.currentTarget)}><img src={post.previewUrl} alt={`收藏作品 ${post.id}`} /><span>#{post.id}</span></button></article>)}</div> : <div className="library-empty">还没有收藏作品，请在 Danbooru 画廊点击图片左上角的星号。</div>}</section>}
 
       {activeView === "prompt" && <section className="prompt-page">
-        <div className="gallery-title"><div><p className="eyebrow">NOVELAI PROMPT EDITOR</p><h2>分区提示词编辑器</h2><p>只添加画面真正需要的内容，最终自动整理为 NovelAI 格式。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>调整画师串</button></div>
+        <div className="gallery-title"><div><p className="eyebrow">NOVELAI PROMPT EDITOR</p><h2>分区提示词编辑器</h2><p>只添加画面真正需要的内容，最终自动整理为 NovelAI 格式 · 草稿自动保存在本机。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>调整画师串</button></div>
         <div className="prompt-page-grid">
           <div className="prompt-page-main">
             <section className="panel prompt-import-panel">
@@ -650,7 +730,7 @@ export default function Home() {
         </div>
       </section>}
 
-      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setSelectedDetailTags([]); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div><div className="selected-tags-toolbar"><span>已选 {selectedDetailTags.length} 项</span><button disabled={!selectedDetailTags.length} onClick={copySelectedDetailTags}>复制已选</button><button disabled={!selectedDetailTags.length} onClick={() => setSelectedDetailTags([])}>清空选择</button></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div className="tag-list">{tags.map((tag) => <span className={`detail-tag ${selectedDetailTags.includes(tag) ? "selected" : ""}`} key={tag}><button className="tag-copy" title={`单独复制 ${tag}`} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button><button className="tag-select" title={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} aria-label={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} onClick={() => toggleDetailTag(tag)}>✓</button><button className="tag-add" title={`单独暂存 ${tag}`} aria-label={`单独暂存 ${tag}`} onClick={() => addToPromptBasket(label, [tag])}>＋</button></span>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
+      {focusedPost && <aside className={`post-detail ${pinnedPostId === focusedPost.id ? "pinned" : ""}`} style={{ top: detailPosition.top, left: detailPosition.left, maxHeight: detailPosition.maxHeight }} onMouseEnter={keepPostOpen} onMouseLeave={() => schedulePostClose(focusedPost.id)}><button className="detail-close" onClick={() => { keepPostOpen(); setFocusedPost(null); setPinnedPostId(null); setSelectedDetailTags([]); setDetailImage(""); }}>×</button><div className="detail-image">{detailImage ? <img src={detailImage} alt={`作品 ${focusedPost.id} 高清预览`} /> : <span>高清图加载中…</span>}</div><div className="detail-copy"><div className="detail-title"><h3>作品 #{focusedPost.id}</h3><span>{pinnedPostId === focusedPost.id ? "已固定" : "移入面板可暂留 · 点击图片固定"}</span></div><div className="selected-tags-toolbar"><span>已选 {selectedDetailTags.length} 项</span><button disabled={!selectedDetailTags.length} onClick={copySelectedDetailTags}>复制已选</button><button disabled={!selectedDetailTags.length} onClick={addSelectedTagsToBasket}>暂存已选</button><button disabled={!selectedDetailTags.length} onClick={() => setSelectedDetailTags([])}>清空选择</button></div>{detailTagGroups.map(([label, tags]) => !!tags.length && <section className="tag-group" key={label}><header><h4>{label}</h4><div className="group-actions"><button className="copy-group" onClick={() => copyTagGroup(label, tags)}>复制全部</button><button className="basket-group" onClick={() => addToPromptBasket(label, tags)}>＋ 暂存</button></div></header><div className="tag-list">{tags.map((tag) => <span className={`detail-tag ${selectedDetailTags.includes(tag) ? "selected" : ""}`} key={tag}><button className="tag-copy" title={`单独复制 ${tag}`} onClick={() => { navigator.clipboard.writeText(tag); setNotice(`已复制 ${tag}`); }}>{tag}</button><button className="tag-select" title={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} aria-label={`${selectedDetailTags.includes(tag) ? "取消选择" : "选择"} ${tag}`} onClick={() => toggleDetailTag(tag)}>✓</button><button className="tag-add" title={`单独暂存 ${tag}`} aria-label={`单独暂存 ${tag}`} onClick={() => addToPromptBasket(label, [tag])}>＋</button></span>)}</div></section>)}<div className="detail-actions"><button className="button primary" onClick={() => sendPostToWorkbench(focusedPost)}>发送提示词到工作台</button><a className="button secondary" href={focusedPost.postUrl} target="_blank" rel="noreferrer">打开 Danbooru 原帖</a></div></div></aside>}
 
       {activeView === "workbench" && <>
       <section className="workspace">

@@ -75,6 +75,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const [translationLookupLoading, setTranslationLookupLoading] = useState(false);
   const [translationLookupStatus, setTranslationLookupStatus] = useState("");
   const [translationLookupRevision, setTranslationLookupRevision] = useState(0);
+  const [undoDeletion, setUndoDeletion] = useState<{ sections: PromptSections; message: string } | null>(null);
   const suggestionRequest = useRef(0);
   const translationRequest = useRef(0);
   const counts = useMemo(() => Object.values(sections).flat().reduce<Record<string, number>>((result, tag) => {
@@ -109,6 +110,8 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     setVisibleSections((current) => current.includes(to) ? current : [...current, to]);
   };
   const removeTag = (section: PromptSectionId, tagId: string) => {
+    const removed = sections[section].find((item) => item.id === tagId);
+    setUndoDeletion({ sections, message: removed ? `已删除 ${removed.text}` : "已删除标签" });
     updateSection(section, (current) => current.filter((item) => item.id !== tagId));
     setSelectedTagIds((current) => current.filter((id) => id !== tagId));
     setSelectedTagId((current) => current === tagId ? null : current);
@@ -116,6 +119,7 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
   const toggleBulkTag = (tagId: string) => setSelectedTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]);
   const deleteSelectedTags = () => {
     if (!selectedTagIds.length) return;
+    setUndoDeletion({ sections, message: `已删除 ${selectedTagIds.length} 个标签` });
     const selected = new Set(selectedTagIds);
     setSections((current) => Object.fromEntries(Object.entries(current).map(([id, tags]) => [id, tags.filter((tag) => !selected.has(tag.id))])) as PromptSections);
     setSelectedTagIds([]);
@@ -216,6 +220,17 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
     }, 320);
     return () => clearTimeout(timer);
   }, [dictionaryOpen, dictionaryTag, lookupTranslation, translationLookupRevision]);
+  useEffect(() => {
+    if (!undoDeletion) return;
+    const timer = setTimeout(() => setUndoDeletion(null), 6500);
+    return () => clearTimeout(timer);
+  }, [undoDeletion]);
+  useEffect(() => {
+    if (!dictionaryOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setDictionaryOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [dictionaryOpen]);
 
   useEffect(() => {
     try { setCustomTranslations(JSON.parse(localStorage.getItem("nai-tag-translations") || "{}")); }
@@ -289,5 +304,6 @@ export function PromptSectionEditor({ sections, setSections, visibleSections, se
       </article>;
     })}</div>
     {!!available.length && <div className="add-prompt-section"><select value={available.some((section) => section.id === addSection) ? addSection : available[0].id} onChange={(event) => setAddSection(event.target.value as PromptSectionId)}>{available.map((section) => <option value={section.id} key={section.id}>{section.label}</option>)}</select><button onClick={() => { const id = available.some((section) => section.id === addSection) ? addSection : available[0].id; setVisibleSections((current) => [...current, id]); }}>＋ 添加分类</button></div>}
+    {undoDeletion && <div className="prompt-undo-toast" role="status"><span>{undoDeletion.message}</span><button onClick={() => { setSections(undoDeletion.sections); setUndoDeletion(null); }}>撤销</button><button className="dismiss" aria-label="关闭撤销提示" onClick={() => setUndoDeletion(null)}>×</button></div>}
   </section>;
 }

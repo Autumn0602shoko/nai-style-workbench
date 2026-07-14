@@ -64,5 +64,10 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(promptEditor, /translation-float/);
   assert.match(promptEditor, /lookupTranslation/);
   assert.match(page, /lookupTagTranslation/);
+  assert.match(page, /nai-workbench-draft/);
+  assert.match(page, /basket-drawer/);
+  assert.match(page, /暂存已选/);
+  assert.match(page, /发送到编辑器并清空/);
+  assert.match(promptEditor, /prompt-undo-toast/);
   assert.match(layout, /title:\s*"画师串工作台"/);
 });

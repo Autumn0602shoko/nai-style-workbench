@@ -22,7 +22,7 @@ export async function lookupTagTranslation(tag: string): Promise<TranslationLook
   url.searchParams.set("q", query);
   url.searchParams.set("langpair", "en|zh-CN");
   url.searchParams.set("mt", "1");
-  const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.15.0" }, signal: AbortSignal.timeout(12_000) });
+  const response = await fetch(url, { headers: { "User-Agent": "NAI-Style-Workbench/0.16.0" }, signal: AbortSignal.timeout(12_000) });
   if (!response.ok) throw new Error(`翻译服务返回 ${response.status}`);
   return { candidates: extractTranslationCandidates(await response.json()), source: "MyMemory" };
 }

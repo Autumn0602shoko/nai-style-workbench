@@ -5,6 +5,7 @@ import { parseArtistTags } from "./artist-parser";
 import { importPromptTags, normalizePromptSections, normalizeVisiblePromptSections } from "./prompt-import";
 import { basicPromptSections, createEmptyPromptSections, createPromptTags, formatNegativePrompt, formatPromptSections, PromptSectionEditor, PromptSectionId, PromptSections } from "./prompt-section-editor";
 import { addTagsToActivePromptBasket, countAllPromptBasketTags, countPromptBasketTags, createPromptBasketState, getActivePromptBasket, normalizePromptBasketState, PromptBasketGroups, PromptBasketState, updateActivePromptBasketGroups } from "./prompt-baskets";
+import { clonePromptSections, countPromptPresetTags, createPromptPreset, normalizePromptPresetState, PromptPreset } from "./prompt-presets";
 import { createWeightExperiments } from "./weight-experiments";
 
 type Artist = { id: string; name: string; weight: number; enabled: boolean; locked?: boolean };
@@ -98,6 +99,8 @@ export default function Home() {
   const [activeCombo, setActiveCombo] = useState<string[]>([]);
   const [promptBasket, setPromptBasket] = useState<PromptBasketState>(createPromptBasketState);
   const [basketOpen, setBasketOpen] = useState(false);
+  const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
+  const [promptPresetName, setPromptPresetName] = useState("");
   const [activeView, setActiveView] = useState<"workbench" | "prompt" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
@@ -149,6 +152,7 @@ export default function Home() {
     }
     try { setFavorites(JSON.parse(localStorage.getItem("nai-style-favorites") || "[]")); } catch { setFavorites([]); }
     try { setPromptBasket(normalizePromptBasketState(JSON.parse(localStorage.getItem("nai-prompt-basket") || "{}"))); } catch { setPromptBasket(createPromptBasketState()); }
+    try { setPromptPresets(normalizePromptPresetState(JSON.parse(localStorage.getItem("nai-prompt-presets") || "{}")).presets); } catch { setPromptPresets([]); }
     try {
       const draft = JSON.parse(localStorage.getItem("nai-workbench-draft") || "null") as WorkbenchDraft | null;
       if (draft?.version === 1 && draft.promptSections && Array.isArray(draft.visiblePromptSections)) {
@@ -222,6 +226,39 @@ export default function Home() {
       .map((artist) => `${formatWeight(weights[artists.indexOf(artist)])}::artist:${artist.name}::`)
       .join(", ");
     return [formatPromptSections(promptSections), artistPart, suffix.trim()].filter(Boolean).join(", ");
+  };
+
+  const persistPromptPresets = (next: PromptPreset[]) => {
+    setPromptPresets(next);
+    localStorage.setItem("nai-prompt-presets", JSON.stringify({ version: 1, presets: next }));
+  };
+
+  const savePromptPreset = () => {
+    const tagCount = Object.values(promptSections).reduce((total, tags) => total + tags.length, 0);
+    if (!tagCount) return;
+    const name = promptPresetName.trim() || `提示词方案 ${promptPresets.length + 1}`;
+    const preset = createPromptPreset(name, promptSections, visiblePromptSections);
+    persistPromptPresets([preset, ...promptPresets]);
+    setPromptPresetName("");
+    setNotice(`已保存提示词方案「${preset.name}」`);
+  };
+
+  const applyPromptPreset = (preset: PromptPreset) => {
+    setPromptSections(clonePromptSections(preset.sections));
+    setVisiblePromptSections([...preset.visibleSections]);
+    setNotice(`已应用提示词方案「${preset.name}」`);
+  };
+
+  const overwritePromptPreset = (preset: PromptPreset) => {
+    const updated = createPromptPreset(preset.name, promptSections, visiblePromptSections, preset.id);
+    updated.createdAt = preset.createdAt;
+    persistPromptPresets(promptPresets.map((item) => item.id === preset.id ? updated : item));
+    setNotice(`已用当前标签覆盖「${preset.name}」`);
+  };
+
+  const removePromptPreset = (preset: PromptPreset) => {
+    persistPromptPresets(promptPresets.filter((item) => item.id !== preset.id));
+    setNotice(`已删除提示词方案「${preset.name}」`);
   };
 
   const parse = () => {
@@ -753,6 +790,12 @@ export default function Home() {
               <div className="panel-heading"><div><span className="step">OUT</span><h2>最终 Prompt</h2></div><button className="button primary" disabled={!prompt} onClick={copyPrompt}>复制 Prompt</button></div>
               <pre>{prompt || "添加标签或画师后，这里会实时生成结果。"}</pre>
               {negativePrompt && <><div className="negative-label">Undesired Content</div><pre className="negative-output">{negativePrompt}</pre></>}
+            </section>
+            <section className="panel prompt-preset-panel">
+              <div className="panel-heading"><div><span className="step">S</span><h2>提示词方案</h2></div><span className="counter">{promptPresets.length} 个</span></div>
+              <p>保存当前全部分区，之后可一键恢复不同角色与衣着搭配。</p>
+              <div className="prompt-preset-create"><input value={promptPresetName} maxLength={40} onChange={(event) => setPromptPresetName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") savePromptPreset(); }} placeholder={`提示词方案 ${promptPresets.length + 1}`} /><button disabled={!Object.values(promptSections).some((tags) => tags.length)} onClick={savePromptPreset}>保存当前</button></div>
+              <div className="prompt-preset-list">{promptPresets.length ? promptPresets.map((preset) => <article key={preset.id}><div><strong>{preset.name}</strong><span>{countPromptPresetTags(preset)} 个标签 · {new Date(preset.updatedAt).toLocaleDateString("zh-CN")}</span></div><div><button className="apply" onClick={() => applyPromptPreset(preset)}>应用</button><button onClick={() => overwritePromptPreset(preset)}>覆盖</button><button className="remove" onClick={() => removePromptPreset(preset)}>删除</button></div></article>) : <div className="prompt-preset-empty">还没有保存方案。整理好一套标签后，可在这里留下快照。</div>}</div>
             </section>
           </aside>
         </div>

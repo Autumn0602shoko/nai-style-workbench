@@ -74,6 +74,9 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /提示词方案/);
   assert.match(page, /保存当前/);
   assert.match(page, /overwritePromptPreset/);
+  assert.match(page, /提示词体检/);
+  assert.match(page, /runPromptAudit/);
+  assert.match(page, /prompt-audit-panel/);
   assert.match(promptEditor, /人物与角色/);
   assert.match(promptEditor, /角色特征/);
   assert.match(promptEditor, /prompt-undo-toast/);

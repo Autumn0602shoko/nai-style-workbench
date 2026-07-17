@@ -215,6 +215,29 @@ main { min-height:100vh; padding-bottom:64px; }
 .prompt-preset-list button.apply { border-color:#b8c9e8; color:#315cbe; }
 .prompt-preset-list button.remove { margin-left:auto; border-color:#ead4d1; color:#ad615a; }
 .prompt-preset-empty { padding:18px 10px; border:1px dashed #ddd6e4; border-radius:8px; color:#958c9d; font-size:9px; line-height:1.6; text-align:center; }
+.prompt-audit-run { min-height:30px; padding:0 10px; border:1px solid #7957a6; border-radius:7px; background:#7957a6; color:#fff; font-size:9px; font-weight:800; }
+.prompt-audit-intro { display:flex; flex-direction:column; gap:5px; padding:14px; color:#7d7388; font-size:9px; line-height:1.6; }
+.prompt-audit-intro strong { color:#4c4259; font-size:11px; }
+.prompt-audit-summary { display:flex; flex-direction:column; gap:3px; margin:12px 14px 8px; padding:10px; border:1px solid #e7d8b7; border-radius:8px; background:#fffaf0; }
+.prompt-audit-summary.clean { border-color:#cde3d2; background:#f4fbf6; }
+.prompt-audit-summary strong { color:#6f5426; font-size:10px; }
+.prompt-audit-summary.clean strong { color:#39734a; }
+.prompt-audit-summary span { color:#94856d; font-size:8px; }
+.prompt-audit-list { display:grid; gap:8px; max-height:420px; overflow:auto; padding:0 14px 14px; }
+.prompt-audit-issue { display:grid; gap:7px; padding:10px; border:1px solid #e3dfe8; border-left-width:3px; border-radius:8px; background:#fcfbfd; }
+.prompt-audit-issue.conflict { border-left-color:#c65c55; }
+.prompt-audit-issue.warning { border-left-color:#d69a36; }
+.prompt-audit-issue.info { border-left-color:#6888c5; }
+.prompt-audit-issue header { display:flex; align-items:center; gap:7px; }
+.prompt-audit-issue header span { padding:2px 5px; border-radius:4px; background:#f1edf5; color:#806f91; font-size:7px; font-weight:800; }
+.prompt-audit-issue header strong { color:#4c4259; font-size:10px; }
+.prompt-audit-issue p { margin:0; color:#82798b; font-size:8px; line-height:1.55; }
+.prompt-audit-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.prompt-audit-tags span { padding:3px 6px; border-radius:5px; background:#edf1f7; color:#506078; font-size:8px; }
+.prompt-audit-actions { display:flex; flex-wrap:wrap; gap:5px; }
+.prompt-audit-actions button { min-height:25px; padding:0 7px; border:1px solid #d8d3df; border-radius:6px; background:#fff; color:#6d6376; font-size:8px; font-weight:800; }
+.prompt-audit-actions button.remove { border-color:#e5c5c1; color:#aa5750; }
+.prompt-audit-actions button.ignore { margin-left:auto; color:#948a9c; }
 .prompt-import-panel { border-top:3px solid #4f83bd; }
 .prompt-import-panel>p { margin:0; padding:11px 16px 0; color:#6b7688; font-size:11px; line-height:1.6; }
 .prompt-import-panel>textarea { display:block; width:calc(100% - 32px); min-height:92px; margin:10px 16px; padding:11px 12px; resize:vertical; border:1px solid #d8deea; border-radius:8px; color:#354159; font:11px/1.65 Consolas,monospace; }

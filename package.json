@@ -1,6 +1,6 @@
 {
   "name": "nai-style-workbench",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "用于解析、调整和收藏 NovelAI 画师串的本地桌面工作台。",
   "author": "Autumn0602shoko",
   "private": true,
@@ -12,7 +12,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "pnpm run build && node --experimental-strip-types --test tests/artist-parser.test.ts tests/prompt-baskets.test.ts tests/prompt-presets.test.ts tests/prompt-import.test.ts tests/tag-translation.test.ts tests/translation-lookup.test.ts tests/weight-experiments.test.ts tests/rendered-html.test.mjs",
+    "test": "pnpm run build && node --experimental-strip-types --test tests/artist-parser.test.ts tests/prompt-baskets.test.ts tests/prompt-audit.test.ts tests/prompt-presets.test.ts tests/prompt-import.test.ts tests/tag-translation.test.ts tests/translation-lookup.test.ts tests/weight-experiments.test.ts tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "desktop:build": "vite build --config desktop.vite.config.ts",

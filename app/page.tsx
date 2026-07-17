@@ -5,6 +5,7 @@ import { parseArtistTags } from "./artist-parser";
 import { importPromptTags, normalizePromptSections, normalizeVisiblePromptSections } from "./prompt-import";
 import { basicPromptSections, createEmptyPromptSections, createPromptTags, formatNegativePrompt, formatPromptSections, PromptSectionEditor, PromptSectionId, PromptSections } from "./prompt-section-editor";
 import { addTagsToActivePromptBasket, countAllPromptBasketTags, countPromptBasketTags, createPromptBasketState, getActivePromptBasket, normalizePromptBasketState, PromptBasketGroups, PromptBasketState, updateActivePromptBasketGroups } from "./prompt-baskets";
+import { auditPromptSections, PromptAuditIssue, removePromptAuditTag } from "./prompt-audit";
 import { clonePromptSections, countPromptPresetTags, createPromptPreset, normalizePromptPresetState, PromptPreset } from "./prompt-presets";
 import { createWeightExperiments } from "./weight-experiments";
 
@@ -101,6 +102,8 @@ export default function Home() {
   const [basketOpen, setBasketOpen] = useState(false);
   const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
   const [promptPresetName, setPromptPresetName] = useState("");
+  const [auditHasRun, setAuditHasRun] = useState(false);
+  const [ignoredAuditIssues, setIgnoredAuditIssues] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<"workbench" | "prompt" | "danbooru" | "favorites">("workbench");
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
@@ -214,6 +217,8 @@ export default function Home() {
   [artistPrompt, promptSections, suffix]);
 
   const negativePrompt = useMemo(() => formatNegativePrompt(promptSections), [promptSections]);
+  const promptAuditIssues = useMemo(() => auditPromptSections(promptSections), [promptSections]);
+  const visiblePromptAuditIssues = useMemo(() => promptAuditIssues.filter((issue) => !ignoredAuditIssues.includes(issue.id)), [promptAuditIssues, ignoredAuditIssues]);
 
   const experiments = useMemo(
     () => createWeightExperiments(artists, experimentAmplitude),
@@ -259,6 +264,25 @@ export default function Home() {
   const removePromptPreset = (preset: PromptPreset) => {
     persistPromptPresets(promptPresets.filter((item) => item.id !== preset.id));
     setNotice(`已删除提示词方案「${preset.name}」`);
+  };
+
+  const runPromptAudit = () => {
+    setIgnoredAuditIssues([]);
+    setAuditHasRun(true);
+    setNotice(promptAuditIssues.length ? `体检发现 ${promptAuditIssues.length} 项需要确认` : "提示词体检完成，没有发现明确问题");
+  };
+
+  const locateAuditIssue = (issue: PromptAuditIssue) => {
+    const section = issue.tags[0]?.section;
+    if (!section) return;
+    setVisiblePromptSections((current) => current.includes(section) ? current : [...current, section]);
+    setTimeout(() => document.getElementById(`prompt-section-${section}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 20);
+  };
+
+  const removeAuditTag = (issue: PromptAuditIssue, tagId: string) => {
+    const removed = issue.tags.find((tag) => tag.id === tagId);
+    setPromptSections((current) => removePromptAuditTag(current, tagId));
+    setNotice(removed ? `已移除 ${removed.text}` : "已移除标签");
   };
 
   const parse = () => {
@@ -790,6 +814,21 @@ export default function Home() {
               <div className="panel-heading"><div><span className="step">OUT</span><h2>最终 Prompt</h2></div><button className="button primary" disabled={!prompt} onClick={copyPrompt}>复制 Prompt</button></div>
               <pre>{prompt || "添加标签或画师后，这里会实时生成结果。"}</pre>
               {negativePrompt && <><div className="negative-label">Undesired Content</div><pre className="negative-output">{negativePrompt}</pre></>}
+            </section>
+            <section className="panel prompt-audit-panel">
+              <div className="panel-heading"><div><span className="step">QC</span><h2>提示词体检</h2></div><button className="prompt-audit-run" onClick={runPromptAudit}>{auditHasRun ? "重新体检" : "开始体检"}</button></div>
+              {!auditHasRun ? <div className="prompt-audit-intro"><strong>检查明确问题，不评价画风</strong><span>找出冲突、重复、可精简词和明显错放的分类；不会自动删除任何标签。</span></div> : <>
+                <div className={`prompt-audit-summary ${visiblePromptAuditIssues.length ? "has-issues" : "clean"}`}><strong>{visiblePromptAuditIssues.length ? `还有 ${visiblePromptAuditIssues.length} 项需要确认` : "没有发现明确问题"}</strong><span>{promptAuditIssues.length - visiblePromptAuditIssues.length ? `已忽略 ${promptAuditIssues.length - visiblePromptAuditIssues.length} 项` : "体检结果会随当前标签实时更新"}</span></div>
+                <div className="prompt-audit-list">{visiblePromptAuditIssues.map((issue) => {
+                  const removableTags = issue.suggestedRemovalIds?.length ? issue.tags.filter((tag) => issue.suggestedRemovalIds?.includes(tag.id)) : issue.severity === "conflict" ? issue.tags : [];
+                  return <article className={`prompt-audit-issue ${issue.severity}`} key={issue.id}>
+                    <header><span>{issue.severity === "conflict" ? "冲突" : issue.severity === "warning" ? "提醒" : "可精简"}</span><strong>{issue.title}</strong></header>
+                    <p>{issue.description}</p>
+                    {!!issue.tags.length && <div className="prompt-audit-tags">{issue.tags.map((tag) => <span key={`${tag.section}-${tag.id}`}>{tag.text}</span>)}</div>}
+                    <div className="prompt-audit-actions">{!!issue.tags.length && <button onClick={() => locateAuditIssue(issue)}>定位</button>}{removableTags.map((tag) => <button className="remove" key={tag.id} onClick={() => removeAuditTag(issue, tag.id)}>移除 {tag.text}</button>)}<button className="ignore" onClick={() => setIgnoredAuditIssues((current) => [...current, issue.id])}>忽略</button></div>
+                  </article>;
+                })}</div>
+              </>}
             </section>
             <section className="panel prompt-preset-panel">
               <div className="panel-heading"><div><span className="step">S</span><h2>提示词方案</h2></div><span className="counter">{promptPresets.length} 个</span></div>

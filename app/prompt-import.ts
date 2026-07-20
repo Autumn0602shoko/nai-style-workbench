@@ -12,7 +12,7 @@ const featureWords = /(?:black|brown|blonde|yellow|red|orange|green|blue|purple|
 const actionWords = /sitting|standing|walking|running|lying|looking|holding|fighting|dancing|jumping|kneeling|pose|reaching|sleeping|eating|drinking|grabbing|pulling|hugging|kissing|arms_|hand_on|hands_on|head_tilt/;
 const compositionWords = /focus|foreshortening|perspective|view|angle|close-up|close_up|upper_body|lower_body|full_body|cowboy_shot|portrait|from_above|from_below|dutch_angle|depth_of_field|cropped|out_of_frame|wide_shot/;
 const sceneWords = /background|indoors|outdoors|city|street|room|bedroom|classroom|school|beach|forest|ocean|sky|cloud|sunset|sunrise|night|day|weather|rain|snow|wind|garden|park|building|window|door|landscape/;
-const qualityWords = /^(?:masterpiece|best_quality|amazing_quality|great_quality|normal_quality|low_quality|worst_quality|absurdres|highres|very_aesthetic|aesthetic|newest|recent|vintage|year_\d{4}|rating:.+)$/;
+const qualityWords = /^(?:masterpiece|best_quality|amazing_quality|great_quality|normal_quality|low_quality|worst_quality|absurdres|highres|very_aesthetic|aesthetic|newest|recent|vintage|year_\d{4}|rating:.+|(?:highly|ultra|extremely)[_-]detailed)$/;
 
 const splitPrompt = (input: string) => {
   const values: string[] = [];
@@ -54,13 +54,13 @@ const parseWeightedTag = (value: string) => {
 
 export function classifyPromptTag(value: string): PromptSectionId {
   const tag = value.trim().toLowerCase().replace(/\s+/g, "_");
+  if (qualityWords.test(tag)) return "quality";
   if (clothingWords.test(tag)) return "clothing";
   if (subjectWords.test(tag) || /_\([^)]+\)$/.test(tag)) return "character";
   if (featureWords.test(tag)) return "features";
   if (actionWords.test(tag)) return "action";
   if (compositionWords.test(tag)) return "composition";
   if (sceneWords.test(tag)) return "scene";
-  if (qualityWords.test(tag)) return "quality";
   return "other";
 }
 

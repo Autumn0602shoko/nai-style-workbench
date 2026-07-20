@@ -41,7 +41,22 @@ main { min-height:100vh; padding-bottom:64px; }
 .image-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:0 16px 16px; }
 .image-grid figure { position:relative; aspect-ratio:3/4; margin:0; overflow:hidden; border-radius:8px; background:#e9edf3; }
 .image-grid img { width:100%; height:100%; object-fit:cover; }
-.image-grid button { position:absolute; top:5px; right:5px; width:26px; height:26px; border:0; border-radius:50%; background:rgba(12,19,31,.75); color:#fff; }
+.image-grid figure>button:not(.reference-preview-button) { position:absolute; top:5px; right:5px; z-index:2; width:26px; height:26px; border:0; border-radius:50%; background:rgba(12,19,31,.75); color:#fff; }
+.image-grid .reference-preview-button { display:block; width:100%; height:100%; padding:0; border:0; background:none; cursor:zoom-in; }
+.image-grid .reference-preview-button img { transition:transform .18s ease; }
+.image-grid .reference-preview-button:hover img { transform:scale(1.025); }
+.reference-lightbox-backdrop { position:fixed; inset:0; z-index:150; border:0; background:rgba(9,14,24,.84); backdrop-filter:blur(5px); }
+.reference-lightbox { position:fixed; inset:3vh 3vw; z-index:160; display:grid; grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden; border:1px solid #546178; border-radius:13px; background:#111a29; box-shadow:0 28px 80px rgba(0,0,0,.45); color:#edf3ff; }
+.reference-lightbox>header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 14px; border-bottom:1px solid #2e3a4e; background:#172234; }
+.reference-lightbox>header>div { display:flex; flex-direction:column; gap:2px; }
+.reference-lightbox>header strong { font-size:12px; }
+.reference-lightbox>header span { color:#9eacc0; font-size:8px; }
+.reference-lightbox>header>button { width:30px; height:30px; border:0; border-radius:50%; background:#2a3649; color:#fff; font-size:18px; }
+.reference-lightbox>div { display:grid; place-items:center; min-height:0; padding:12px; }
+.reference-lightbox>div img { display:block; max-width:100%; max-height:100%; object-fit:contain; }
+.reference-lightbox>footer { display:flex; align-items:center; justify-content:center; gap:14px; padding:9px 14px; border-top:1px solid #2e3a4e; background:#172234; }
+.reference-lightbox>footer button { min-height:30px; padding:0 10px; border:1px solid #43516a; border-radius:6px; background:#202d42; color:#dce7f8; font-size:9px; font-weight:800; }
+.reference-lightbox>footer span { min-width:54px; color:#9eacc0; font-size:9px; text-align:center; }
 .danbooru-panel { position:relative; z-index:2; overflow:visible; border-top:3px solid #5b8c63; }
 .safe-badge { padding:4px 8px; border-radius:99px; background:#fff0e4; color:#a9572d; font-size:10px; font-weight:800; }
 .booru-search { display:grid; grid-template-columns:76px 1fr auto; gap:8px; padding:14px; }

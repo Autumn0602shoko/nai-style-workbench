@@ -9,7 +9,7 @@ const cleanName = (value: string) =>
   value
     .replace(/\\,/g, ",")
     .trim()
-    .replace(/^[('"\\\s]+|[)'"\\\s]+$/g, "");
+    .replace(/^['"\\\s]+|['"\\\s]+$/g, "");
 
 const bracketWeight = (opening: string, closing: string) => {
   const strong = Math.min(

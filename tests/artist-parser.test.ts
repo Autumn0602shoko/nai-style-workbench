@@ -28,3 +28,6 @@ test("finds tags in copied JSON and removes duplicates case-insensitively", () =
   ]);
 });
 
+test("keeps meaningful parentheses inside artist names", () => {
+  assert.deepEqual(parseArtistTags("1.10::artist:yd (orange maru)::"), [{ name: "yd (orange maru)", weight: 1.1 }]);
+});

@@ -80,6 +80,9 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /StyleDebugLab/);
   assert.match(page, /openStyleDebug/);
   assert.match(page, /画师调试/);
+  assert.match(page, /startNewRecipe/);
+  assert.match(page, /onDoubleClick/);
+  assert.match(page, /reference-lightbox/);
   const debugLab = await readFile(new URL("../app/style-debug-lab.tsx", import.meta.url), "utf8");
   assert.match(debugLab, /正负面质量词/);
   assert.match(debugLab, /记录本次实验/);

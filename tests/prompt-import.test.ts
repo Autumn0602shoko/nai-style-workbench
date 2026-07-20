@@ -22,6 +22,12 @@ test("classifies common prompt groups", () => {
   assert.equal(classifyPromptTag("year_2025"), "quality");
 });
 
+test("classifies detailed quality tags before feature substrings", () => {
+  assert.equal(classifyPromptTag("highly detailed"), "quality");
+  assert.equal(classifyPromptTag("ultra-detailed"), "quality");
+  assert.equal(classifyPromptTag("extremely detailed"), "quality");
+});
+
 test("moves a tag between prompt sections without losing its settings", () => {
   const tag = { id: "tag-1", text: "black_dress", weight: 1.25, enabled: false };
   const sections = {

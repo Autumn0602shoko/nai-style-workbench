@@ -100,6 +100,7 @@ export default function Home() {
   const [ignoredAuditIssues, setIgnoredAuditIssues] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<ActiveView>("workbench");
   const [debugRecipeId, setDebugRecipeId] = useState<string | null>(null);
+  const [referencePreviewIndex, setReferencePreviewIndex] = useState<number | null>(null);
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
   const [selectedDetailTags, setSelectedDetailTags] = useState<string[]>([]);
@@ -189,6 +190,17 @@ export default function Home() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [basketOpen]);
+
+  useEffect(() => {
+    if (referencePreviewIndex === null) return;
+    const handlePreviewKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReferencePreviewIndex(null);
+      if (event.key === "ArrowLeft") setReferencePreviewIndex((current) => current === null ? null : (current - 1 + images.length) % images.length);
+      if (event.key === "ArrowRight") setReferencePreviewIndex((current) => current === null ? null : (current + 1) % images.length);
+    };
+    window.addEventListener("keydown", handlePreviewKey);
+    return () => window.removeEventListener("keydown", handlePreviewKey);
+  }, [referencePreviewIndex, images.length]);
 
   useEffect(() => {
     const query = booruQuery.trim();
@@ -320,6 +332,24 @@ export default function Home() {
 
   const updateArtist = (id: string, patch: Partial<Artist>) =>
     setArtists((current) => current.map((artist) => (artist.id === id ? { ...artist, ...patch } : artist)));
+
+  const startNewRecipe = () => {
+    setRaw("");
+    setRecipeName("新画师串");
+    setArtists([]);
+    setPromptSections(createEmptyPromptSections());
+    setVisiblePromptSections(basicPromptSections);
+    setPromptImportText("");
+    setSuffix("");
+    setImages([]);
+    setActiveRecipeId(null);
+    setDebugRecipeId(null);
+    setAuditHasRun(false);
+    setIgnoredAuditIssues([]);
+    setReferencePreviewIndex(null);
+    setActiveView("workbench");
+    setNotice("已新建空白画师串");
+  };
 
   const persistRecipes = (next: Recipe[]) => {
     setRecipes(next);
@@ -791,7 +821,7 @@ export default function Home() {
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
           <button className={`basket-toggle ${allBasketTagCount ? "has-items" : ""}`} onClick={() => setBasketOpen((current) => !current)}>暂存篮<span>{allBasketTagCount}</span></button>
-          {activeView === "workbench" && <><button className="button secondary" onClick={() => { setRecipeName("新画师串"); setArtists([]); setPromptSections(createEmptyPromptSections()); setVisiblePromptSections(basicPromptSections); setSuffix(""); setImages([]); setActiveRecipeId(null); setNotice("已新建空白画师串"); }}>＋ 新建</button>
+          {activeView === "workbench" && <><button className="button secondary" onClick={startNewRecipe}>＋ 新建</button>
           <button className="button primary" onClick={saveRecipe}>{activeRecipeId ? "更新配方" : "保存配方"}</button></>}
         </div>
       </header>
@@ -902,8 +932,8 @@ export default function Home() {
             <div className="image-grid">
               {images.map((src, index) => (
                 <figure key={src.slice(-24) + index}>
-                  <img src={src} alt={`参考图 ${index + 1}`} />
-                  <button aria-label={`删除参考图 ${index + 1}`} onClick={() => setImages((current) => current.filter((_, i) => i !== index))}>×</button>
+                  <button className="reference-preview-button" aria-label={`双击预览参考图 ${index + 1}`} title="双击查看大图" onDoubleClick={() => setReferencePreviewIndex(index)}><img src={src} alt={`参考图 ${index + 1}`} /></button>
+                  <button aria-label={`删除参考图 ${index + 1}`} onDoubleClick={(event) => event.stopPropagation()} onClick={() => { setImages((current) => current.filter((_, i) => i !== index)); if (referencePreviewIndex === index) setReferencePreviewIndex(null); }}>×</button>
                 </figure>
               ))}
             </div>
@@ -986,6 +1016,7 @@ export default function Home() {
         </div>
       </section>
       </>}
+      {referencePreviewIndex !== null && images[referencePreviewIndex] && <><button className="reference-lightbox-backdrop" aria-label="关闭参考图预览" onClick={() => setReferencePreviewIndex(null)} /><aside className="reference-lightbox" role="dialog" aria-modal="true" aria-label={`参考图 ${referencePreviewIndex + 1} 大图预览`}><header><div><strong>参考图 {referencePreviewIndex + 1}</strong><span>双击缩略图打开 · 方向键切换 · Esc 关闭</span></div><button aria-label="关闭大图预览" onClick={() => setReferencePreviewIndex(null)}>×</button></header><div><img src={images[referencePreviewIndex]} alt={`参考图 ${referencePreviewIndex + 1} 大图`} /></div>{images.length > 1 && <footer><button onClick={() => setReferencePreviewIndex((referencePreviewIndex - 1 + images.length) % images.length)}>← 上一张</button><span>{referencePreviewIndex + 1} / {images.length}</span><button onClick={() => setReferencePreviewIndex((referencePreviewIndex + 1) % images.length)}>下一张 →</button></footer>}</aside></>}
     </main>
   );
 }

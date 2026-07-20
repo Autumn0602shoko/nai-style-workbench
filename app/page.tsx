@@ -7,19 +7,12 @@ import { basicPromptSections, createEmptyPromptSections, createPromptTags, forma
 import { addTagsToActivePromptBasket, countAllPromptBasketTags, countPromptBasketTags, createPromptBasketState, getActivePromptBasket, normalizePromptBasketState, PromptBasketGroups, PromptBasketState, updateActivePromptBasketGroups } from "./prompt-baskets";
 import { auditPromptSections, PromptAuditIssue, removePromptAuditTag } from "./prompt-audit";
 import { clonePromptSections, countPromptPresetTags, createPromptPreset, normalizePromptPresetState, PromptPreset } from "./prompt-presets";
+import { StyleDebugLab } from "./style-debug-lab";
+import type { StyleExperimentDraft } from "./style-experiments";
+import type { Artist, Recipe } from "./workbench-types";
 import { createWeightExperiments } from "./weight-experiments";
 
-type Artist = { id: string; name: string; weight: number; enabled: boolean; locked?: boolean };
-type Recipe = {
-  id: string;
-  name: string;
-  artists: Artist[];
-  suffix: string;
-  promptSections?: PromptSections;
-  visiblePromptSections?: PromptSectionId[];
-  images: string[];
-  createdAt: number;
-};
+type ActiveView = "workbench" | "prompt" | "danbooru" | "favorites" | "debug";
 type DanbooruPost = { id: number; rating: string; previewUrl: string; imageUrl: string; postUrl: string; artistTags: string[]; generalTags: string[]; characterTags: string[]; copyrightTags: string[]; metaTags: string[] };
 type DanbooruResult = { selectedTag: string | null; totalCount?: number; suggestions: { name: string; count: number }[]; posts: DanbooruPost[]; error?: string };
 type WorkbenchDraft = {
@@ -32,7 +25,8 @@ type WorkbenchDraft = {
   visiblePromptSections: PromptSectionId[];
   promptImportText: string;
   activeRecipeId: string | null;
-  activeView: "workbench" | "prompt" | "danbooru" | "favorites";
+  activeView: ActiveView;
+  debugRecipeId?: string | null;
 };
 type OnlineTagDictionary = { version: string; updatedAt: string; entries: Record<string, string> };
 type TranslationLookupResult = { candidates: string[]; source: string };
@@ -104,7 +98,8 @@ export default function Home() {
   const [promptPresetName, setPromptPresetName] = useState("");
   const [auditHasRun, setAuditHasRun] = useState(false);
   const [ignoredAuditIssues, setIgnoredAuditIssues] = useState<string[]>([]);
-  const [activeView, setActiveView] = useState<"workbench" | "prompt" | "danbooru" | "favorites">("workbench");
+  const [activeView, setActiveView] = useState<ActiveView>("workbench");
+  const [debugRecipeId, setDebugRecipeId] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<DanbooruPost[]>([]);
   const [focusedPost, setFocusedPost] = useState<DanbooruPost | null>(null);
   const [selectedDetailTags, setSelectedDetailTags] = useState<string[]>([]);
@@ -166,7 +161,8 @@ export default function Home() {
         setVisiblePromptSections(normalizeVisiblePromptSections(draft.visiblePromptSections));
         setPromptImportText(draft.promptImportText || "");
         setActiveRecipeId(draft.activeRecipeId || null);
-        if (["workbench", "prompt", "danbooru", "favorites"].includes(draft.activeView)) setActiveView(draft.activeView);
+        setDebugRecipeId(draft.debugRecipeId || null);
+        if (["workbench", "prompt", "danbooru", "favorites", "debug"].includes(draft.activeView)) setActiveView(draft.activeView);
         setNotice("已恢复上次未完成的草稿");
       }
     } catch {
@@ -179,13 +175,13 @@ export default function Home() {
   useEffect(() => {
     if (!draftHydrated.current) return;
     const persistDraft = () => {
-      const draft: WorkbenchDraft = { version: 1, updatedAt: Date.now(), recipeName, artists, suffix, promptSections, visiblePromptSections, promptImportText, activeRecipeId, activeView };
+      const draft: WorkbenchDraft = { version: 1, updatedAt: Date.now(), recipeName, artists, suffix, promptSections, visiblePromptSections, promptImportText, activeRecipeId, activeView, debugRecipeId };
       localStorage.setItem("nai-workbench-draft", JSON.stringify(draft));
     };
     const timer = setTimeout(persistDraft, 500);
     window.addEventListener("pagehide", persistDraft);
     return () => { clearTimeout(timer); window.removeEventListener("pagehide", persistDraft); };
-  }, [recipeName, artists, suffix, promptSections, visiblePromptSections, promptImportText, activeRecipeId, activeView]);
+  }, [recipeName, artists, suffix, promptSections, visiblePromptSections, promptImportText, activeRecipeId, activeView, debugRecipeId]);
 
   useEffect(() => {
     if (!basketOpen) return;
@@ -365,6 +361,43 @@ export default function Home() {
     if (activeRecipeId === id) setActiveRecipeId(null);
   };
 
+  const openStyleDebug = (recipe: Recipe) => {
+    setDebugRecipeId(recipe.id);
+    setActiveView("debug");
+    setNotice(`已打开「${recipe.name}」调试模式`);
+  };
+
+  const debugSections = (recipe: Recipe, draft: StyleExperimentDraft) => {
+    const sections = normalizePromptSections(recipe.promptSections);
+    sections.quality = createPromptTags(draft.positiveTags);
+    sections.negative = createPromptTags(draft.negativeTags);
+    return sections;
+  };
+
+  const applyStyleDebugDraft = (recipe: Recipe, draft: StyleExperimentDraft) => {
+    const sections = debugSections(recipe, draft);
+    setRecipeName(recipe.name);
+    setArtists(draft.artists.map((artist) => ({ ...artist, id: uid() })));
+    setPromptSections(sections);
+    setVisiblePromptSections([...new Set([...normalizeVisiblePromptSections(recipe.visiblePromptSections), ...(draft.positiveTags.length ? ["quality" as PromptSectionId] : []), ...(draft.negativeTags.length ? ["negative" as PromptSectionId] : [])])]);
+    setSuffix(recipe.suffix || "");
+    setImages(recipe.images);
+    setActiveRecipeId(recipe.id);
+    setActiveView("workbench");
+    setNotice("已把调试方案应用到工作台");
+  };
+
+  const overwriteStyleDebugRecipe = (recipe: Recipe, draft: StyleExperimentDraft) => {
+    const updated: Recipe = {
+      ...recipe,
+      artists: draft.artists.map((artist) => ({ ...artist })),
+      promptSections: debugSections(recipe, draft),
+      styleDebug: { modelId: draft.modelId, autoQuality: draft.autoQuality, ucPresetId: draft.ucPresetId, settings: { ...draft.settings } },
+    };
+    persistRecipes([updated, ...recipes.filter((item) => item.id !== recipe.id)]);
+    setNotice(`已覆盖保存「${recipe.name}」的画师与质量参数`);
+  };
+
   const addImages = async (incoming: File[]) => {
     const files = incoming.filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 6 - images.length));
     const next = await Promise.all(files.map(resizeImage));
@@ -424,6 +457,7 @@ export default function Home() {
     if (!keyword) return recipes;
     return recipes.filter((recipe) => `${recipe.name} ${recipe.artists.map((artist) => artist.name).join(" ")}`.toLowerCase().includes(keyword));
   }, [recipes, search]);
+  const debugRecipe = useMemo(() => recipes.find((recipe) => recipe.id === debugRecipeId) || null, [recipes, debugRecipeId]);
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(prompt);
@@ -752,6 +786,7 @@ export default function Home() {
           <button className={activeView === "prompt" ? "active" : ""} onClick={() => setActiveView("prompt")}>提示词编辑器</button>
           <button className={activeView === "danbooru" ? "active" : ""} onClick={() => setActiveView("danbooru")}>Danbooru 画廊</button>
           <button className={activeView === "favorites" ? "active" : ""} onClick={() => setActiveView("favorites")}>收藏 {favorites.length ? `(${favorites.length})` : ""}</button>
+          {(debugRecipe || activeRecipeId) && <button className={activeView === "debug" ? "active" : ""} onClick={() => { const recipe = debugRecipe || recipes.find((item) => item.id === activeRecipeId); if (recipe) openStyleDebug(recipe); }}>画师调试</button>}
         </nav>
         <div className="top-actions">
           <span className="status">{notice || "本地保存 · 不上传图片"}</span>
@@ -768,6 +803,9 @@ export default function Home() {
         <div className="basket-drawer-body">{basketTagCount ? <div className="basket-drawer-groups">{Object.entries(activePromptBasket.groups).filter(([, tags]) => tags.length).map(([label, tags]) => <section key={label}><header><b>{label}</b><small>{tags.length} 项</small></header><div>{tags.map((tag) => <span key={tag}>{tag}<button aria-label={`从暂存篮移除 ${tag}`} onClick={() => removePromptBasketTag(label, tag)}>×</button></span>)}</div></section>)}</div> : <div className="basket-drawer-empty"><b>这个小篮子还是空的</b><span>在作品预览框中点击标签右侧的“＋”，标签就会进入当前启用的小篮子。</span><button onClick={() => { setBasketOpen(false); setActiveView("danbooru"); }}>前往 Danbooru 画廊</button></div>}</div>
         <footer><button className="clear" disabled={!basketTagCount} onClick={clearPromptBasket}>清空当前篮</button><button className="send" disabled={!basketTagCount} onClick={sendBasketToWorkbench}>发送当前篮并清空</button></footer>
       </aside></>}
+
+      {activeView === "debug" && debugRecipe && <StyleDebugLab recipe={debugRecipe} onBack={() => setActiveView("workbench")} onApply={(draft) => applyStyleDebugDraft(debugRecipe, draft)} onOverwrite={(draft) => overwriteStyleDebugRecipe(debugRecipe, draft)} />}
+      {activeView === "debug" && !debugRecipe && <section className="style-debug-missing"><strong>没有找到要调试的画师串</strong><span>请先在“已保存的画师串”中点击“调试”。</span><button className="button primary" onClick={() => setActiveView("workbench")}>返回工作台</button></section>}
 
       {activeView === "danbooru" && <section className="gallery-page">
         <div className="gallery-title"><div><p className="eyebrow">DANBOORU EXPLORER</p><h2>画师与提示词参考画廊</h2><p>查询标签、浏览作品，并把画师或提示词送回工作台。</p></div><button className="button secondary" onClick={() => setActiveView("workbench")}>返回工作台</button></div>
@@ -942,7 +980,7 @@ export default function Home() {
             <article className={`recipe-card ${recipe.id === activeRecipeId ? "active" : ""}`} key={recipe.id}>
               <div className="recipe-cover">{recipe.images[0] ? <img src={recipe.images[0]} alt="" /> : <span>{recipe.name.slice(0, 1)}</span>}</div>
               <div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.artists.map((artist) => artist.name).join(" · ") || "暂无画师"}</p><small>{recipe.artists.length} 位画师 · {new Date(recipe.createdAt).toLocaleDateString("zh-CN")}</small></div>
-              <div className="recipe-actions"><button onClick={() => loadRecipe(recipe)}>载入</button><button onClick={() => removeRecipe(recipe.id)}>删除</button></div>
+              <div className="recipe-actions"><button onClick={() => loadRecipe(recipe)}>载入</button><button className="debug" onClick={() => openStyleDebug(recipe)}>调试</button><button className="delete" onClick={() => removeRecipe(recipe.id)}>删除</button></div>
             </article>
           ))}
         </div>

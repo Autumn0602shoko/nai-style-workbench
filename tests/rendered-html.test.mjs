@@ -77,6 +77,14 @@ test("includes local library and prompt editing capabilities", async () => {
   assert.match(page, /提示词体检/);
   assert.match(page, /runPromptAudit/);
   assert.match(page, /prompt-audit-panel/);
+  assert.match(page, /StyleDebugLab/);
+  assert.match(page, /openStyleDebug/);
+  assert.match(page, /画师调试/);
+  const debugLab = await readFile(new URL("../app/style-debug-lab.tsx", import.meta.url), "utf8");
+  assert.match(debugLab, /正负面质量词/);
+  assert.match(debugLab, /记录本次实验/);
+  assert.match(debugLab, /上传本次试验图/);
+  assert.match(debugLab, /质量词分析/);
   assert.match(promptEditor, /人物与角色/);
   assert.match(promptEditor, /角色特征/);
   assert.match(promptEditor, /prompt-undo-toast/);

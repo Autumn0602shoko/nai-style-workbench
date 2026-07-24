@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  artist_workbench_ui:
+    path: packages/workbench_ui
 
   # 状态管理
   flutter_riverpod: ^2.5.1

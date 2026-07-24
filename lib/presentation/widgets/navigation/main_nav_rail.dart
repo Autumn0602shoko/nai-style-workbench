@@ -1,3 +1,4 @@
+import 'package:artist_workbench_ui/artist_workbench_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,136 +14,138 @@ import '../auth/account_avatar.dart';
 import '../auth/login_form_container.dart';
 
 import '../common/app_toast.dart';
+import 'main_navigation_map.dart';
 
-class MainNavRail extends ConsumerWidget {
+class MainNavRail extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const MainNavRail({super.key, required this.navigationShell});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+  ConsumerState<MainNavRail> createState() => _MainNavRailState();
+}
 
-    // 使用 navigationShell.currentIndex 获取当前选中索引
-    // Branches: 0=home, 1=localGallery, 2=onlineGallery, 3=settings, 4=promptConfig, 5=statistics, 6=tagLibraryPage, 7=vibeLibrary, 8=artistWorkbench
-    final currentIndex = navigationShell.currentIndex;
+class _MainNavRailState extends ConsumerState<MainNavRail> {
+  bool? _collapsedOverride;
 
-    // 映射 branch index 到 nav rail index
-    // Nav rail: 0=home, 1=artistWorkbench, 2=localGallery, 3=onlineGallery, 4=vibeLibrary, 5=promptConfig, 6=tagLibraryPage, 7=statistics, 8=settings
-    int selectedIndex = 0;
-    if (currentIndex == 8) selectedIndex = 1; // artistWorkbench
-    if (currentIndex == 1) selectedIndex = 2; // localGallery
-    if (currentIndex == 2) selectedIndex = 3; // onlineGallery
-    if (currentIndex == 7) selectedIndex = 4; // vibeLibrary
-    if (currentIndex == 4) selectedIndex = 5; // promptConfig
-    if (currentIndex == 6) selectedIndex = 6; // tagLibraryPage
-    if (currentIndex == 5) selectedIndex = 7; // statistics
-    if (currentIndex == 3) selectedIndex = 8; // settings
-
-    return Container(
-      width: 60,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(right: BorderSide(color: theme.dividerColor, width: 1)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          // 账户头像区域
-          _AccountAvatarButton(ref: ref),
-
-          // Navigation Items
-          _NavIcon(
-            icon: Icons.brush, // Canvas/Edit
-            label: context.l10n.nav_canvas,
-            isSelected: selectedIndex == 0,
-            onTap: () => navigationShell.goBranch(0), // home branch
-          ),
-
-          // 画师工作台
-          _NavIcon(
-            icon: Icons.palette_outlined,
-            label: '画师工作台',
-            isSelected: selectedIndex == 1,
-            onTap: () => navigationShell.goBranch(8),
-          ),
-
-          // 本地画廊（App生成的图片）
-          _NavIcon(
-            icon: Icons.folder, // Local Generated Images
-            label: '本地画廊',
-            isSelected: selectedIndex == 2,
-            onTap: () => navigationShell.goBranch(1), // localGallery branch
-          ),
-
-          // 在线画廊
-          _NavIcon(
-            icon: Icons.photo_library, // Online Gallery
-            label: context.l10n.nav_onlineGallery,
-            isSelected: selectedIndex == 3,
-            onTap: () => navigationShell.goBranch(2), // onlineGallery branch
-          ),
-
-          // Vibe库
-          _NavIcon(
-            icon: Icons.auto_awesome, // Vibe Library
-            label: 'Vibe库',
-            isSelected: selectedIndex == 4,
-            onTap: () => navigationShell.goBranch(7), // vibeLibrary branch
-          ),
-
-          // 随机配置
-          _NavIcon(
-            icon: Icons.casino, // Random prompt config
-            label: context.l10n.nav_randomConfig,
-            isSelected: selectedIndex == 5,
-            onTap: () => navigationShell.goBranch(4), // promptConfig branch
-          ),
-
-          // 词库
-          _NavIcon(
-            icon: Icons.book,
-            label: context.l10n.nav_dictionary,
-            isSelected: selectedIndex == 6,
-            onTap: () => navigationShell.goBranch(6), // tagLibraryPage branch
-          ),
-
-          // 画廊统计
-          _NavIcon(
-            icon: Icons.bar_chart, // Gallery Statistics
-            label: context.l10n.statistics_title,
-            isSelected: selectedIndex == 7,
-            onTap: () => navigationShell.goBranch(5), // statistics branch
-          ),
-
-          const Spacer(),
-
-          // Discord 社群
-          _ExternalLinkIcon(
-            icon: Icons.discord,
-            label: context.l10n.nav_discordCommunity,
-            color: const Color(0xFF5865F2), // Discord 紫色
-            url: 'https://discord.gg/R48n6GwXzD',
-          ),
-
-          // GitHub 仓库
-          _GitHubIcon(
-            url: 'https://github.com/Autumn0602shoko/nai-style-workbench',
-            label: context.l10n.nav_githubRepo,
-          ),
-
-          // Bottom Settings
-          _NavIcon(
-            icon: Icons.settings,
-            label: context.l10n.nav_settings,
-            isSelected: selectedIndex == 8,
-            onTap: () => navigationShell.goBranch(3), // settings branch
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    final compactByWidth = MediaQuery.sizeOf(context).width < 1180;
+    final collapsed = _collapsedOverride ?? compactByWidth;
+    final selectedIndex = MainNavigationMap.sidebarIndexForBranch(
+      widget.navigationShell.currentIndex,
     );
+
+    return WorkbenchSidebar(
+      width: 232,
+      collapsedWidth: 72,
+      collapsed: collapsed,
+      selectedIndex: selectedIndex,
+      onSelected: (index) => widget.navigationShell.goBranch(
+        MainNavigationMap.branchForSidebarIndex(index),
+      ),
+      onCollapsedChanged: (value) => setState(() => _collapsedOverride = value),
+      header: collapsed
+          ? Center(child: _AccountAvatarButton(ref: ref, bottomMargin: 0))
+          : Row(
+              children: [
+                _AccountAvatarButton(ref: ref, bottomMargin: 0),
+                const SizedBox(width: WorkbenchTokens.space12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Artist Workbench',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '创作工作台',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+      items: [
+        WorkbenchSidebarItem(
+          label: context.l10n.nav_canvas,
+          icon: Icons.brush_outlined,
+          selectedIcon: Icons.brush_rounded,
+        ),
+        const WorkbenchSidebarItem(
+          label: '画师工作台',
+          icon: Icons.palette_outlined,
+          selectedIcon: Icons.palette_rounded,
+        ),
+        const WorkbenchSidebarItem(
+          label: '本地画廊',
+          icon: Icons.folder_outlined,
+          selectedIcon: Icons.folder_rounded,
+        ),
+        WorkbenchSidebarItem(
+          label: context.l10n.nav_onlineGallery,
+          icon: Icons.photo_library_outlined,
+          selectedIcon: Icons.photo_library_rounded,
+        ),
+        const WorkbenchSidebarItem(
+          label: 'Vibe 库',
+          icon: Icons.auto_awesome_outlined,
+          selectedIcon: Icons.auto_awesome_rounded,
+        ),
+        WorkbenchSidebarItem(
+          label: context.l10n.nav_randomConfig,
+          icon: Icons.casino_outlined,
+          selectedIcon: Icons.casino_rounded,
+        ),
+        WorkbenchSidebarItem(
+          label: context.l10n.nav_dictionary,
+          icon: Icons.menu_book_outlined,
+          selectedIcon: Icons.menu_book_rounded,
+        ),
+        WorkbenchSidebarItem(
+          label: context.l10n.statistics_title,
+          icon: Icons.bar_chart_outlined,
+          selectedIcon: Icons.bar_chart_rounded,
+        ),
+        WorkbenchSidebarItem(
+          label: context.l10n.nav_settings,
+          icon: Icons.settings_outlined,
+          selectedIcon: Icons.settings_rounded,
+        ),
+      ],
+      footer: collapsed
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _externalLinks(context),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: _externalLinks(context),
+            ),
+    );
+  }
+
+  List<Widget> _externalLinks(BuildContext context) {
+    return [
+      _ExternalLinkIcon(
+        icon: Icons.discord,
+        label: context.l10n.nav_discordCommunity,
+        color: const Color(0xFF5865F2),
+        url: 'https://discord.gg/R48n6GwXzD',
+      ),
+      _GitHubIcon(
+        url: 'https://github.com/Autumn0602shoko/nai-style-workbench',
+        label: context.l10n.nav_githubRepo,
+      ),
+    ];
   }
 }
 
@@ -523,93 +526,12 @@ class _ExternalLinkIconState extends State<_ExternalLinkIcon> {
   }
 }
 
-class _NavIcon extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _NavIcon({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  State<_NavIcon> createState() => _NavIconState();
-}
-
-class _NavIconState extends State<_NavIcon> {
-  bool _isHovering = false;
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = widget.isSelected
-        ? theme.colorScheme.primary
-        : theme.iconTheme.color?.withValues(alpha: 0.7);
-
-    // 计算背景色：选中状态优先，其次是 Hover 状态
-    Color backgroundColor = Colors.transparent;
-    if (widget.isSelected) {
-      backgroundColor = theme.colorScheme.primary.withValues(alpha: 0.1);
-    } else if (_isHovering) {
-      backgroundColor = theme.colorScheme.surfaceContainerHighest.withValues(
-        alpha: 0.5,
-      );
-    }
-
-    return Tooltip(
-      message: widget.label,
-      preferBelow: false,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        width: 48,
-        height: 48,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onTap,
-            onHover: (val) => setState(() => _isHovering = val),
-            onTapDown: (_) => setState(() => _isPressed = true),
-            onTapUp: (_) => setState(() => _isPressed = false),
-            onTapCancel: () => setState(() => _isPressed = false),
-            borderRadius: BorderRadius.circular(8),
-            child: AnimatedScale(
-              scale: _isPressed ? 0.92 : (_isHovering ? 1.1 : 1.0),
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  color: backgroundColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: widget.isSelected
-                      ? Border.all(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.5,
-                          ),
-                          width: 1,
-                        )
-                      : null,
-                ),
-                child: Icon(widget.icon, color: color, size: 24),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 账户头像按钮组件
 class _AccountAvatarButton extends StatefulWidget {
   final WidgetRef ref;
+  final double bottomMargin;
 
-  const _AccountAvatarButton({required this.ref});
+  const _AccountAvatarButton({required this.ref, this.bottomMargin = 16});
 
   @override
   State<_AccountAvatarButton> createState() => _AccountAvatarButtonState();
@@ -640,7 +562,7 @@ class _AccountAvatarButtonState extends State<_AccountAvatarButton> {
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: widget.bottomMargin),
       width: 40,
       height: 40,
       child: Material(

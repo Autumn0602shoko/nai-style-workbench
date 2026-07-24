@@ -33,6 +33,17 @@ void main() {
     expect(motion.standard, lessThan(motion.emphasis));
   });
 
+  test('theme decorator preserves the base scheme and installs semantics', () {
+    final base = ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+    );
+    final decorated = WorkbenchTheme.decorate(base);
+
+    expect(decorated.colorScheme, base.colorScheme);
+    expect(decorated.extension<WorkbenchSurface>(), isNotNull);
+    expect(decorated.extension<WorkbenchMotion>(), isNotNull);
+  });
+
   testWidgets('button exposes intent and invokes its callback', (tester) async {
     var presses = 0;
     await tester.pumpWidget(

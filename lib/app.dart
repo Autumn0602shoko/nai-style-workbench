@@ -1,3 +1,4 @@
+import 'package:artist_workbench_ui/artist_workbench_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nai_launcher/l10n/app_localizations.dart';
@@ -150,18 +151,21 @@ class NAILauncherApp extends ConsumerWidget {
           debugShowCheckedModeBanner: false,
 
           // 主题 (fontFamily 为空时使用主题原生字体)
-          theme: AppTheme.getTheme(
-            themeType,
-            Brightness.light,
-            fontConfig: fontType.fontFamily.isEmpty ? null : fontType,
+          theme: WorkbenchTheme.decorate(
+            AppTheme.getTheme(
+              themeType,
+              Brightness.light,
+              fontConfig: fontType.fontFamily.isEmpty ? null : fontType,
+            ),
           ),
-          darkTheme: AppTheme.getTheme(
-            themeType,
-            Brightness.dark,
-            fontConfig: fontType.fontFamily.isEmpty ? null : fontType,
+          darkTheme: WorkbenchTheme.decorate(
+            AppTheme.getTheme(
+              themeType,
+              Brightness.dark,
+              fontConfig: fontType.fontFamily.isEmpty ? null : fontType,
+            ),
           ),
           themeMode: ThemeMode.dark, // 默认深色模式
-
           // 国际化
           locale: locale,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -173,9 +177,9 @@ class NAILauncherApp extends ConsumerWidget {
           // 字体缩放全局应用
           builder: (context, child) {
             return MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: TextScaler.linear(fontScale),
-              ),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(fontScale)),
               child: child!,
             );
           },

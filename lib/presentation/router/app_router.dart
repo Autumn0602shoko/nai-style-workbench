@@ -20,6 +20,7 @@ import '../screens/tag_library_page/tag_library_page_screen.dart';
 import '../screens/vibe_library/vibe_library_screen.dart';
 import '../widgets/drop/global_drop_handler.dart';
 import '../widgets/navigation/main_nav_rail.dart';
+import '../widgets/navigation/main_navigation_map.dart';
 import '../widgets/queue/floating_queue_button.dart';
 import '../widgets/queue/queue_management_page.dart';
 
@@ -369,7 +370,9 @@ class _MainShellState extends ConsumerState<MainShell> {
 
         // 保活页面：画廊（1, 2）和 Vibe 库（7）
         // 始终保持在树中，通过 TickerMode 控制动画
-        if (index == 1 || index == 2 || index == 7) {
+        if (index == MainNavigationMap.localGallery ||
+            index == MainNavigationMap.onlineGallery ||
+            index == MainNavigationMap.vibeLibrary) {
           return TickerMode(enabled: isActive, child: child);
         }
 
@@ -388,25 +391,25 @@ class _MainShellState extends ConsumerState<MainShell> {
     final globalShortcuts = <String, VoidCallback>{
       // 页面导航
       ShortcutIds.navigateToGeneration: () {
-        widget.navigationShell.goBranch(0);
+        widget.navigationShell.goBranch(MainNavigationMap.generation);
       },
       ShortcutIds.navigateToLocalGallery: () {
-        widget.navigationShell.goBranch(2);
+        widget.navigationShell.goBranch(MainNavigationMap.localGallery);
       },
       ShortcutIds.navigateToOnlineGallery: () {
-        widget.navigationShell.goBranch(3);
+        widget.navigationShell.goBranch(MainNavigationMap.onlineGallery);
       },
       ShortcutIds.navigateToSettings: () {
-        widget.navigationShell.goBranch(4);
+        widget.navigationShell.goBranch(MainNavigationMap.settings);
       },
       ShortcutIds.navigateToRandomConfig: () {
-        widget.navigationShell.goBranch(5);
+        widget.navigationShell.goBranch(MainNavigationMap.promptConfig);
       },
       ShortcutIds.navigateToStatistics: () {
-        widget.navigationShell.goBranch(6);
+        widget.navigationShell.goBranch(MainNavigationMap.statistics);
       },
       ShortcutIds.navigateToTagLibrary: () {
-        widget.navigationShell.goBranch(7);
+        widget.navigationShell.goBranch(MainNavigationMap.tagLibrary);
       },
       // 显示快捷键帮助
       ShortcutIds.showShortcutHelp: () {
@@ -571,30 +574,31 @@ class MobileShell extends ConsumerWidget {
     );
   }
 
-  /// 映射 branch index 到 mobile navigation index
-  /// Branches: 0=home, 1=gallery, 2=localGallery, 3=onlineGallery, 4=settings, 5=promptConfig
+  /// 将主路由分支映射到移动端的三个精简入口。
   /// Mobile nav: 0=home, 1=gallery, 2=settings
   int _getSelectedIndex() {
     final branchIndex = navigationShell.currentIndex;
-    if (branchIndex == 4) return 2; // settings
-    if (branchIndex >= 1 && branchIndex <= 3) return 1; // any gallery
+    if (branchIndex == MainNavigationMap.settings) return 2;
+    if (branchIndex == MainNavigationMap.localGallery ||
+        branchIndex == MainNavigationMap.onlineGallery) {
+      return 1;
+    }
     return 0; // home
   }
 
   /// 映射 mobile navigation index 到 branch index
   void _onNavigate(int mobileIndex) {
-    // Mobile nav: 0=home, 1=gallery, 2=settings
-    // Map to branches: 0=home, 1=gallery, 4=settings
+    // Mobile nav: 0=home, 1=gallery, 2=settings.
     int branchIndex;
     switch (mobileIndex) {
       case 1:
-        branchIndex = 1; // gallery (本地生成历史)
+        branchIndex = MainNavigationMap.localGallery;
         break;
       case 2:
-        branchIndex = 4; // settings
+        branchIndex = MainNavigationMap.settings;
         break;
       default:
-        branchIndex = 0; // home
+        branchIndex = MainNavigationMap.generation;
     }
     navigationShell.goBranch(branchIndex);
   }

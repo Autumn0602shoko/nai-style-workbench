@@ -45,8 +45,8 @@ $distPath = Join-Path $root $DistDir
 $buildPath = Join-Path $root "build/windows/x64/runner/Release"
 $exePath = Join-Path $buildPath "nai_launcher.exe"
 $nsisScript = Join-Path $root "installer/windows/nai_launcher.nsi"
-$portablePath = Join-Path $distPath "NAI_Launcher_Windows_${Version}_Portable.zip"
-$installerPath = Join-Path $distPath "NAI_Launcher_Windows_${Version}_Setup.exe"
+$portablePath = Join-Path $distPath "Artist_Style_Workbench_Windows_${Version}_Portable.zip"
+$installerPath = Join-Path $distPath "Artist_Style_Workbench_Windows_${Version}_Setup.exe"
 
 if (-not $SkipFlutterBuild) {
   & (Join-Path $PSScriptRoot "verify_nuget.ps1")

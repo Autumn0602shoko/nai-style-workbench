@@ -1,0 +1,22 @@
+name: artist_workbench_ui_lab
+description: Interactive component lab for Artist Workbench UI.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  artist_workbench_ui:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

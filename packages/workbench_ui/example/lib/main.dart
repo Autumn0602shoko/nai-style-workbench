@@ -48,6 +48,8 @@ class ComponentLab extends StatefulWidget {
 class _ComponentLabState extends State<ComponentLab> {
   final Set<String> _selectedTags = {'1girl', 'blue eyes'};
   String _lastAction = '等待交互';
+  int _selectedNavigation = 0;
+  bool _sidebarCollapsed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +264,216 @@ class _ComponentLabState extends State<ComponentLab> {
                           ],
                         );
                       },
+                    ),
+                  ),
+                  const SizedBox(height: WorkbenchTokens.space24),
+                  _LabSection(
+                    number: '04',
+                    title: '输入与编辑',
+                    description: '标题、说明、错误和清空动作共享同一套焦点反馈。',
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact = constraints.maxWidth < 760;
+                        final fieldWidth = compact
+                            ? constraints.maxWidth
+                            : (constraints.maxWidth - WorkbenchTokens.space16) /
+                                  2;
+                        return Wrap(
+                          spacing: WorkbenchTokens.space16,
+                          runSpacing: WorkbenchTokens.space20,
+                          children: [
+                            SizedBox(
+                              width: fieldWidth,
+                              child: WorkbenchTextField(
+                                initialValue: 'masterpiece, 1girl',
+                                label: '正面提示词',
+                                hint: '输入 NovelAI 标签',
+                                helperText: '支持逗号分隔；这里不处理业务语法。',
+                                prefixIcon: Icons.auto_awesome_outlined,
+                                clearable: true,
+                                onChanged: (value) =>
+                                    setState(() => _lastAction = '编辑正面提示词'),
+                              ),
+                            ),
+                            SizedBox(
+                              width: fieldWidth,
+                              child: const WorkbenchTextField(
+                                initialValue: '重复的标签',
+                                label: '校验状态',
+                                errorText: '该标签已在当前分区中存在',
+                                prefixIcon: Icons.warning_amber_rounded,
+                                clearable: true,
+                              ),
+                            ),
+                            SizedBox(
+                              width: constraints.maxWidth,
+                              child: WorkbenchTextField(
+                                label: '备注',
+                                hint: '记录本次画师串调试结果……',
+                                minLines: 3,
+                                maxLines: 5,
+                                onChanged: (value) =>
+                                    setState(() => _lastAction = '编辑调试备注'),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: WorkbenchTokens.space24),
+                  _LabSection(
+                    number: '05',
+                    title: '弹窗与轻提示',
+                    description: '重要选择使用模态确认，短暂结果使用不打断操作的轻提示。',
+                    child: Wrap(
+                      spacing: WorkbenchTokens.space12,
+                      runSpacing: WorkbenchTokens.space12,
+                      children: [
+                        WorkbenchButton(
+                          label: '打开确认弹窗',
+                          icon: Icons.open_in_new_rounded,
+                          variant: WorkbenchButtonVariant.secondary,
+                          onPressed: () async {
+                            final confirmed = await showWorkbenchConfirmDialog(
+                              context: context,
+                              title: '保存当前画师串？',
+                              message: '将保存当前标签、权重和排序。参考图仍只保存在本地设备中。',
+                              confirmLabel: '保存',
+                              icon: Icons.save_outlined,
+                            );
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(
+                              () => _lastAction = confirmed
+                                  ? '确认保存画师串'
+                                  : '取消保存画师串',
+                            );
+                          },
+                        ),
+                        WorkbenchButton(
+                          label: '成功提示',
+                          icon: Icons.check_circle_outline_rounded,
+                          variant: WorkbenchButtonVariant.quiet,
+                          onPressed: () {
+                            showWorkbenchToast(
+                              context: context,
+                              message: '已加入当前 Tag 暂存篮',
+                              tone: WorkbenchToastTone.success,
+                              actionLabel: '查看',
+                              onAction: () =>
+                                  setState(() => _lastAction = '查看 Tag 暂存篮'),
+                            );
+                            setState(() => _lastAction = '显示成功提示');
+                          },
+                        ),
+                        WorkbenchButton(
+                          label: '错误提示',
+                          icon: Icons.error_outline_rounded,
+                          variant: WorkbenchButtonVariant.danger,
+                          onPressed: () {
+                            showWorkbenchToast(
+                              context: context,
+                              message: 'Danbooru 请求超时，请稍后重试',
+                              tone: WorkbenchToastTone.error,
+                            );
+                            setState(() => _lastAction = '显示错误提示');
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: WorkbenchTokens.space24),
+                  _LabSection(
+                    number: '06',
+                    title: '桌面侧边导航',
+                    description: '展开与收起只改变导航密度，不把页面路由写进组件。',
+                    child: SizedBox(
+                      height: 360,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(
+                          WorkbenchTokens.radiusLarge,
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: surfaces.border),
+                            borderRadius: BorderRadius.circular(
+                              WorkbenchTokens.radiusLarge,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              WorkbenchSidebar(
+                                collapsed: _sidebarCollapsed,
+                                selectedIndex: _selectedNavigation,
+                                onSelected: (index) => setState(() {
+                                  _selectedNavigation = index;
+                                  _lastAction = '切换侧边导航 ${index + 1}';
+                                }),
+                                onCollapsedChanged: (value) => setState(() {
+                                  _sidebarCollapsed = value;
+                                  _lastAction = value ? '收起侧边栏' : '展开侧边栏';
+                                }),
+                                header: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.auto_awesome_rounded),
+                                    if (!_sidebarCollapsed) ...[
+                                      const SizedBox(
+                                        width: WorkbenchTokens.space12,
+                                      ),
+                                      const Text(
+                                        '画师串工作台',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                items: const [
+                                  WorkbenchSidebarItem(
+                                    label: '工作台',
+                                    icon: Icons.dashboard_outlined,
+                                    selectedIcon: Icons.dashboard_rounded,
+                                  ),
+                                  WorkbenchSidebarItem(
+                                    label: '提示词编辑器',
+                                    icon: Icons.edit_note_outlined,
+                                    selectedIcon: Icons.edit_note_rounded,
+                                  ),
+                                  WorkbenchSidebarItem(
+                                    label: 'Danbooru 画廊',
+                                    icon: Icons.grid_view_outlined,
+                                    selectedIcon: Icons.grid_view_rounded,
+                                    badge: '24',
+                                  ),
+                                  WorkbenchSidebarItem(
+                                    label: 'Tag 暂存篮',
+                                    icon: Icons.shopping_basket_outlined,
+                                    selectedIcon: Icons.shopping_basket_rounded,
+                                    badge: '8',
+                                  ),
+                                  WorkbenchSidebarItem(
+                                    label: '设置',
+                                    icon: Icons.settings_outlined,
+                                    selectedIcon: Icons.settings_rounded,
+                                  ),
+                                ],
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    '当前页面：${_selectedNavigation + 1}',
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: WorkbenchTokens.space48),

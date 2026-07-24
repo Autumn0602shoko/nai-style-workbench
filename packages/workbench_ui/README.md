@@ -12,11 +12,12 @@ state code.
 - Components expose semantic intent, not upstream application assumptions.
 - New products consume the package instead of copying widget files.
 
-## Included in 0.1.0
+## Included
 
 - Color, spacing, radius, typography, shadow, and motion foundations.
 - Light and dark theme builders.
-- Buttons, tags, and interactive cards.
+- Buttons, tags, interactive cards, and text fields.
+- Animated modal dialogs, feedback toasts, and collapsible sidebars.
 - A component lab under `example/`.
 
 Run the lab:

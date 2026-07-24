@@ -116,4 +116,110 @@ void main() {
 
     expect(taps, 1);
   });
+
+  testWidgets('text field clears its value and reports the change', (
+    tester,
+  ) async {
+    String? changed;
+    await tester.pumpWidget(
+      host(
+        WorkbenchTextField(
+          initialValue: 'blue eyes',
+          label: '搜索标签',
+          clearable: true,
+          onChanged: (value) => changed = value,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('清空搜索标签'));
+    await tester.pump();
+
+    expect(changed, '');
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      isEmpty,
+    );
+  });
+
+  testWidgets('confirmation dialog returns the selected result', (
+    tester,
+  ) async {
+    bool? result;
+    await tester.pumpWidget(
+      host(
+        Builder(
+          builder: (context) => WorkbenchButton(
+            label: '打开弹窗',
+            onPressed: () async {
+              result = await showWorkbenchConfirmDialog(
+                context: context,
+                title: '保存画师串？',
+                message: '保存当前标签与权重。',
+                confirmLabel: '保存',
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开弹窗'));
+    await tester.pumpAndSettle();
+    expect(find.text('保存画师串？'), findsOneWidget);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(result, isTrue);
+  });
+
+  testWidgets('toast helper presents transient feedback', (tester) async {
+    await tester.pumpWidget(
+      host(
+        Builder(
+          builder: (context) => WorkbenchButton(
+            label: '显示提示',
+            onPressed: () => showWorkbenchToast(
+              context: context,
+              message: '已加入暂存篮',
+              tone: WorkbenchToastTone.success,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('显示提示'));
+    await tester.pump();
+
+    expect(find.text('已加入暂存篮'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
+  });
+
+  testWidgets('sidebar reports navigation changes', (tester) async {
+    var selected = 0;
+    await tester.pumpWidget(
+      host(
+        SizedBox(
+          height: 300,
+          child: WorkbenchSidebar(
+            items: const [
+              WorkbenchSidebarItem(
+                label: '工作台',
+                icon: Icons.dashboard_outlined,
+              ),
+              WorkbenchSidebarItem(label: '画廊', icon: Icons.grid_view_outlined),
+            ],
+            selectedIndex: selected,
+            onSelected: (value) => selected = value,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('画廊'));
+    await tester.pumpAndSettle();
+
+    expect(selected, 1);
+  });
 }
